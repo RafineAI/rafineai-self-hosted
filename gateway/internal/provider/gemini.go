@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
@@ -15,7 +16,7 @@ type geminiAdapter struct{}
 
 func (geminiAdapter) Name() string { return "gemini" }
 
-func (geminiAdapter) BuildRequest(ctx context.Context, p state.Provider, cred string, req ChatRequest) (*http.Request, error) {
+func (a geminiAdapter) buildReq(ctx context.Context, p state.Provider, cred string, req ChatRequest, stream bool) (*http.Request, error) {
 	base := firstNonEmpty(p.BaseURL, "https://generativelanguage.googleapis.com")
 	model := firstNonEmpty(req.Model, p.DefaultModel)
 
@@ -60,22 +61,77 @@ func (geminiAdapter) BuildRequest(ctx context.Context, p state.Provider, cred st
 	if err != nil {
 		return nil, err
 	}
-	url := base + "/v1beta/models/" + model + ":generateContent"
+	method := ":generateContent"
+	if stream {
+		method = ":streamGenerateContent"
+	}
+	url := base + "/v1beta/models/" + model + method
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(buf))
 	if err != nil {
 		return nil, err
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	q := httpReq.URL.Query()
+	if stream {
+		q.Set("alt", "sse")
+	}
 	// Gemini accepts the credential either as a query key (api_key mode) or as
 	// a Bearer token (OAuth2 mode).
 	if p.AuthMode == "oauth2" {
 		httpReq.Header.Set("Authorization", "Bearer "+cred)
 	} else {
-		q := httpReq.URL.Query()
 		q.Set("key", cred)
-		httpReq.URL.RawQuery = q.Encode()
 	}
+	httpReq.URL.RawQuery = q.Encode()
 	return httpReq, nil
+}
+
+func (a geminiAdapter) BuildRequest(ctx context.Context, p state.Provider, cred string, req ChatRequest) (*http.Request, error) {
+	return a.buildReq(ctx, p, cred, req, false)
+}
+
+func (a geminiAdapter) BuildStreamRequest(ctx context.Context, p state.Provider, cred string, req ChatRequest) (*http.Request, error) {
+	return a.buildReq(ctx, p, cred, req, true)
+}
+
+func (geminiAdapter) DecodeStream(body io.Reader, emit StreamConsumer) (Usage, error) {
+	var usage Usage
+	err := scanSSE(body, func(_, data string) bool {
+		if data == "" {
+			return true
+		}
+		var chunk struct {
+			Candidates []struct {
+				Content struct {
+					Parts []struct {
+						Text string `json:"text"`
+					} `json:"parts"`
+				} `json:"content"`
+			} `json:"candidates"`
+			UsageMetadata struct {
+				PromptTokenCount     int `json:"promptTokenCount"`
+				CandidatesTokenCount int `json:"candidatesTokenCount"`
+			} `json:"usageMetadata"`
+		}
+		if json.Unmarshal([]byte(data), &chunk) != nil {
+			return true
+		}
+		if len(chunk.Candidates) > 0 {
+			for _, prt := range chunk.Candidates[0].Content.Parts {
+				if prt.Text != "" {
+					emit(prt.Text)
+				}
+			}
+		}
+		if chunk.UsageMetadata.PromptTokenCount > 0 {
+			usage.PromptTokens = chunk.UsageMetadata.PromptTokenCount
+		}
+		if chunk.UsageMetadata.CandidatesTokenCount > 0 {
+			usage.CompletionTokens = chunk.UsageMetadata.CandidatesTokenCount
+		}
+		return true
+	})
+	return usage, err
 }
 
 func (geminiAdapter) ParseResponse(body []byte) (ChatResponse, error) {

@@ -34,6 +34,14 @@ blocklist) swapped atomically via `atomic.Pointer`. Hot-path reads never lock.
 in `cmd/gateway/main.go` refreshes it on an interval. If the DB is unreachable,
 the previous snapshot keeps serving.
 
+## Rate limiting & quotas
+
+`internal/ratelimit` enforces per-user **requests/minute** and **daily token
+quota** with in-RAM counters (0 = unlimited). Per-user overrides sync from the
+`users` table into the snapshot; otherwise `GATEWAY_DEFAULT_RPM` /
+`GATEWAY_DEFAULT_DAILY_TOKENS` apply. Exceeding a limit returns `429` and is
+recorded in the audit log.
+
 ## Content policy
 
 `internal/policy` redacts obvious PII (Turkish national ID, credit-card-like
@@ -43,8 +51,12 @@ the hook for richer deny/route rules later.
 ## Provider adapters
 
 `internal/provider` translates the unified OpenAI-shaped request to/from each
-upstream: `openai`, `anthropic`, `gemini`. **MVP is non-streaming.** Streaming
-passthrough is a documented Phase-2 item.
+upstream: `openai`, `anthropic`, `gemini`. Both **non-streaming** and
+**streaming** (`"stream": true`) are supported: each adapter builds the
+provider-specific streaming request and decodes its SSE, which the gateway
+re-emits as OpenAI-compatible `chat.completion.chunk` events (with a final
+usage chunk and `[DONE]`). Token usage is captured for the audit log even while
+streaming.
 
 ## Develop & test
 

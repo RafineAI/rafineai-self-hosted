@@ -15,6 +15,9 @@ type Config struct {
 	SyncInterval     time.Duration
 	AuditBatchSize   int
 	AuditFlushPeriod time.Duration
+	// Default per-user limits applied when a user has no override. 0 = unlimited.
+	DefaultRPM         int
+	DefaultDailyTokens int
 }
 
 // Load reads configuration from the environment, applying sensible defaults.
@@ -26,6 +29,8 @@ func Load() Config {
 		SyncInterval:     time.Duration(getenvInt("GATEWAY_SYNC_INTERVAL_SEC", 30)) * time.Second,
 		AuditBatchSize:   getenvInt("GATEWAY_AUDIT_BATCH_SIZE", 50),
 		AuditFlushPeriod: time.Duration(getenvInt("GATEWAY_AUDIT_FLUSH_MS", 2000)) * time.Millisecond,
+		DefaultRPM:         getenvInt("GATEWAY_DEFAULT_RPM", 0),
+		DefaultDailyTokens: getenvInt("GATEWAY_DEFAULT_DAILY_TOKENS", 0),
 	}
 }
 

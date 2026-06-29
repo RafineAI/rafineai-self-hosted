@@ -6,35 +6,53 @@ from fastapi import APIRouter, Depends, HTTPException, status
 
 from .. import db, security
 from ..deps import CurrentUser, require_admin
-from ..schemas import UserCreate, UserOut, UserUpdate
+from ..schemas import UserCreate, UserCreateResult, UserOut, UserUpdate
 
 router = APIRouter(prefix="/api/users", tags=["users"])
+
+_USER_COLS = ("id::text AS id, email, role, is_active, must_change_password, "
+              "rate_limit_rpm, daily_token_quota")
 
 
 @router.get("", response_model=list[UserOut])
 async def list_users(_: CurrentUser = Depends(require_admin)):
     rows = await db.pool().fetch(
-        "SELECT id::text AS id, email, role, is_active FROM users ORDER BY created_at"
+        f"SELECT {_USER_COLS} FROM users ORDER BY created_at"
     )
     return [UserOut(**dict(r)) for r in rows]
 
 
-@router.post("", response_model=UserOut, status_code=status.HTTP_201_CREATED)
+@router.post("", response_model=UserCreateResult, status_code=status.HTTP_201_CREATED)
 async def create_user(body: UserCreate, _: CurrentUser = Depends(require_admin)):
+    # The admin may set a password; otherwise the system generates a temporary
+    # one the user must change on first sign-in. The (generated) password is
+    # returned to the admin to share however they like — no email is sent.
+    admin_set = body.password is not None
+    password = body.password or security.generate_password()
+    must_change = not admin_set
+
     try:
         row = await db.pool().fetchrow(
-            """
-            INSERT INTO users (email, password_hash, role)
-            VALUES ($1, $2, $3)
-            RETURNING id::text AS id, email, role, is_active
+            f"""
+            INSERT INTO users (email, password_hash, role, must_change_password,
+                               rate_limit_rpm, daily_token_quota)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING {_USER_COLS}
             """,
             body.email,
-            security.hash_password(body.password),
+            security.hash_password(password),
             body.role,
+            must_change,
+            body.rate_limit_rpm,
+            body.daily_token_quota,
         )
     except asyncpg.UniqueViolationError:
         raise HTTPException(status.HTTP_409_CONFLICT, "email already exists")
-    return UserOut(**dict(row))
+
+    result = UserCreateResult(**dict(row))
+    if not admin_set:
+        result.generated_password = password
+    return result
 
 
 @router.patch("/{user_id}", response_model=UserOut)
@@ -57,13 +75,19 @@ async def update_user(
     if body.is_active is not None:
         args.append(body.is_active)
         sets.append(f"is_active = ${len(args)}")
+    if body.rate_limit_rpm is not None:
+        args.append(body.rate_limit_rpm)
+        sets.append(f"rate_limit_rpm = ${len(args)}")
+    if body.daily_token_quota is not None:
+        args.append(body.daily_token_quota)
+        sets.append(f"daily_token_quota = ${len(args)}")
     if not sets:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "no fields to update")
 
     args.append(user_id)
     row = await db.pool().fetchrow(
         f"UPDATE users SET {', '.join(sets)}, updated_at = now() "
-        f"WHERE id = ${len(args)} RETURNING id::text AS id, email, role, is_active",
+        f"WHERE id = ${len(args)} RETURNING {_USER_COLS}",
         *args,
     )
     return UserOut(**dict(row))

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { api, streamChat } from "@/lib/api";
 import type { Conversation, Message, Provider } from "@/lib/types";
 
 export default function ChatPage() {
@@ -46,22 +46,33 @@ export default function ChatPage() {
   }
 
   async function send() {
-    if (!input.trim() || !activeId) return;
+    if (!input.trim() || !activeId || sending) return;
     const content = input.trim();
+    const convId = activeId;
     setInput("");
     setSending(true);
     setError("");
-    // Optimistic user bubble.
-    setMessages((m) => [...m, { id: "tmp", role: "user", content, tokens: 0 }]);
+    // Optimistic user bubble + an empty assistant bubble we stream into.
+    setMessages((m) => [
+      ...m,
+      { id: "tmp-u", role: "user", content, tokens: 0 },
+      { id: "tmp-a", role: "assistant", content: "", tokens: 0 },
+    ]);
     try {
-      const reply = await api<{ message: Message }>(`/api/conversations/${activeId}/chat`, {
-        method: "POST",
-        body: JSON.stringify({ content }),
+      await streamChat(convId, content, (delta) => {
+        setMessages((m) => {
+          const copy = [...m];
+          const last = copy[copy.length - 1];
+          if (last && last.role === "assistant") {
+            copy[copy.length - 1] = { ...last, content: last.content + delta };
+          }
+          return copy;
+        });
       });
-      // Reload to get canonical ids + assistant reply.
-      const msgs = await api<Message[]>(`/api/conversations/${activeId}/messages`);
+      // Reconcile with canonical persisted messages (ids, tokens).
+      const msgs = await api<Message[]>(`/api/conversations/${convId}/messages`);
       setMessages(msgs);
-      void reply;
+      refreshConversations();
     } catch (e: any) {
       setError(e.message ?? "Failed to send");
     } finally {
@@ -70,6 +81,7 @@ export default function ChatPage() {
   }
 
   const activeProviders = providers.filter((p) => p.is_active);
+  const activeConvo = conversations.find((c) => c.id === activeId) ?? null;
 
   return (
     <div className="flex h-screen">
@@ -100,42 +112,60 @@ export default function ChatPage() {
       {/* Thread */}
       <div className="flex flex-1 flex-col">
         {!activeId ? (
-          <div className="flex flex-1 items-center justify-center text-slate-400">
-            Select or start a conversation.
+          <div className="flex flex-1 flex-col items-center justify-center text-center text-slate-400">
+            <div className="mb-3 text-4xl">💬</div>
+            <p className="font-medium text-slate-500">Select or start a conversation</p>
+            <p className="text-sm">Pick a provider above to begin chatting.</p>
           </div>
         ) : (
           <>
+            <div className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
+              <span className="truncate font-medium">{activeConvo?.title ?? "Conversation"}</span>
+              {activeConvo?.model && (
+                <span className="badge bg-slate-100 text-slate-600">{activeConvo.model}</span>
+              )}
+            </div>
             <div className="flex-1 space-y-4 overflow-y-auto p-6">
-              {messages.map((m, i) => (
-                <div
-                  key={m.id + i}
-                  className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-                >
+              {messages.map((m, i) => {
+                const isLast = i === messages.length - 1;
+                const streaming = sending && isLast && m.role === "assistant";
+                return (
                   <div
-                    className={`max-w-2xl whitespace-pre-wrap rounded-lg px-4 py-2 text-sm ${
-                      m.role === "user"
-                        ? "bg-brand text-white"
-                        : "border border-slate-200 bg-white"
-                    }`}
+                    key={m.id + i}
+                    className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
                   >
-                    {m.content}
+                    <div
+                      className={`max-w-2xl whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
+                        m.role === "user"
+                          ? "bg-brand text-white"
+                          : "border border-slate-200 bg-white text-slate-800"
+                      } ${streaming && !m.content ? "caret" : ""}`}
+                    >
+                      {m.content}
+                      {streaming && m.content && <span className="caret" />}
+                    </div>
                   </div>
-                </div>
-              ))}
-              {sending && <p className="text-sm text-slate-400">Assistant is typing…</p>}
+                );
+              })}
               <div ref={bottomRef} />
             </div>
             {error && <p className="px-6 pb-2 text-sm text-red-600">{error}</p>}
-            <div className="flex gap-2 border-t border-slate-200 p-4">
-              <input
-                className="input"
-                placeholder="Type a message…"
+            <div className="flex items-end gap-2 border-t border-slate-200 bg-white p-4">
+              <textarea
+                className="input max-h-40 resize-none"
+                rows={1}
+                placeholder="Type a message…  (Enter to send, Shift+Enter for newline)"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => e.key === "Enter" && !sending && send()}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && !e.shiftKey) {
+                    e.preventDefault();
+                    if (!sending) send();
+                  }
+                }}
               />
-              <button className="btn" onClick={send} disabled={sending}>
-                Send
+              <button className="btn" onClick={send} disabled={sending || !input.trim()}>
+                {sending ? "…" : "Send"}
               </button>
             </div>
           </>

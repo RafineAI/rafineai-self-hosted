@@ -16,7 +16,7 @@ export default function AuditPage() {
 
   return (
     <div className="h-screen overflow-y-auto p-8">
-      <h1 className="mb-6 text-2xl font-bold">Audit Logs</h1>
+      <h1 className="page-title mb-6">Audit Logs</h1>
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
       <div className="card overflow-x-auto">
         <table className="w-full text-sm">

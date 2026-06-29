@@ -25,7 +25,8 @@ async def list_providers(user: CurrentUser = Depends(get_current_user)):
         """
         SELECT id::text AS id, name, type, auth_mode,
                (api_key_encrypted IS NOT NULL AND api_key_encrypted <> '') AS has_api_key,
-               base_url, default_model, is_active
+               base_url, default_model, is_active,
+               light_model, heavy_model, route_threshold_tokens
         FROM llm_providers ORDER BY created_at
         """
     )
@@ -56,15 +57,19 @@ async def create_provider(
         INSERT INTO llm_providers
             (name, type, auth_mode, api_key_encrypted, oauth_client_id,
              oauth_client_secret_enc, oauth_auth_url, oauth_token_url,
-             oauth_scopes, base_url, default_model, is_active)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+             oauth_scopes, base_url, default_model, is_active,
+             light_model, heavy_model, route_threshold_tokens)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,
+                COALESCE($15, 2000))
         RETURNING id::text AS id, name, type, auth_mode,
                   (api_key_encrypted IS NOT NULL) AS has_api_key,
-                  base_url, default_model, is_active
+                  base_url, default_model, is_active,
+                  light_model, heavy_model, route_threshold_tokens
         """,
         body.name, body.type, body.auth_mode, api_key_enc, body.oauth_client_id,
         secret_enc, body.oauth_auth_url, body.oauth_token_url, body.oauth_scopes,
         body.base_url, body.default_model, body.is_active,
+        body.light_model, body.heavy_model, body.route_threshold_tokens,
     )
     return ProviderOut(**dict(row))
 
@@ -88,6 +93,13 @@ async def update_provider(
         args.append(body.default_model); sets.append(f"default_model = ${len(args)}")
     if body.is_active is not None:
         args.append(body.is_active); sets.append(f"is_active = ${len(args)}")
+    if body.light_model is not None:
+        args.append(body.light_model); sets.append(f"light_model = ${len(args)}")
+    if body.heavy_model is not None:
+        args.append(body.heavy_model); sets.append(f"heavy_model = ${len(args)}")
+    if body.route_threshold_tokens is not None:
+        args.append(body.route_threshold_tokens)
+        sets.append(f"route_threshold_tokens = ${len(args)}")
     if not sets:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "no fields to update")
 
@@ -96,7 +108,8 @@ async def update_provider(
         f"UPDATE llm_providers SET {', '.join(sets)}, updated_at = now() "
         f"WHERE id = ${len(args)} "
         f"RETURNING id::text AS id, name, type, auth_mode, "
-        f"(api_key_encrypted IS NOT NULL) AS has_api_key, base_url, default_model, is_active",
+        f"(api_key_encrypted IS NOT NULL) AS has_api_key, base_url, default_model, is_active, "
+        f"light_model, heavy_model, route_threshold_tokens",
         *args,
     )
     if not row:

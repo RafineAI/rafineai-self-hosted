@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/state"
@@ -14,12 +15,14 @@ type openAIAdapter struct{}
 
 func (openAIAdapter) Name() string { return "openai" }
 
-func (openAIAdapter) BuildRequest(ctx context.Context, p state.Provider, cred string, req ChatRequest) (*http.Request, error) {
-	base := firstNonEmpty(p.BaseURL, "https://api.openai.com")
+func (a openAIAdapter) buildBody(req ChatRequest, p state.Provider, stream bool) map[string]any {
 	body := map[string]any{
 		"model":    firstNonEmpty(req.Model, p.DefaultModel),
 		"messages": req.Messages,
-		"stream":   false,
+		"stream":   stream,
+	}
+	if stream {
+		body["stream_options"] = map[string]any{"include_usage": true}
 	}
 	if req.Temperature != nil {
 		body["temperature"] = *req.Temperature
@@ -27,6 +30,11 @@ func (openAIAdapter) BuildRequest(ctx context.Context, p state.Provider, cred st
 	if req.MaxTokens != nil {
 		body["max_tokens"] = *req.MaxTokens
 	}
+	return body
+}
+
+func (a openAIAdapter) newRequest(ctx context.Context, p state.Provider, cred string, body map[string]any) (*http.Request, error) {
+	base := firstNonEmpty(p.BaseURL, "https://api.openai.com")
 	buf, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
@@ -38,6 +46,46 @@ func (openAIAdapter) BuildRequest(ctx context.Context, p state.Provider, cred st
 	httpReq.Header.Set("Content-Type", "application/json")
 	httpReq.Header.Set("Authorization", "Bearer "+cred)
 	return httpReq, nil
+}
+
+func (a openAIAdapter) BuildRequest(ctx context.Context, p state.Provider, cred string, req ChatRequest) (*http.Request, error) {
+	return a.newRequest(ctx, p, cred, a.buildBody(req, p, false))
+}
+
+func (a openAIAdapter) BuildStreamRequest(ctx context.Context, p state.Provider, cred string, req ChatRequest) (*http.Request, error) {
+	return a.newRequest(ctx, p, cred, a.buildBody(req, p, true))
+}
+
+func (openAIAdapter) DecodeStream(body io.Reader, emit StreamConsumer) (Usage, error) {
+	var usage Usage
+	err := scanSSE(body, func(_, data string) bool {
+		if data == "" || data == "[DONE]" {
+			return data != "[DONE]"
+		}
+		var chunk struct {
+			Choices []struct {
+				Delta struct {
+					Content string `json:"content"`
+				} `json:"delta"`
+			} `json:"choices"`
+			Usage *struct {
+				PromptTokens     int `json:"prompt_tokens"`
+				CompletionTokens int `json:"completion_tokens"`
+			} `json:"usage"`
+		}
+		if json.Unmarshal([]byte(data), &chunk) != nil {
+			return true
+		}
+		if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+			emit(chunk.Choices[0].Delta.Content)
+		}
+		if chunk.Usage != nil {
+			usage.PromptTokens = chunk.Usage.PromptTokens
+			usage.CompletionTokens = chunk.Usage.CompletionTokens
+		}
+		return true
+	})
+	return usage, err
 }
 
 func (openAIAdapter) ParseResponse(body []byte) (ChatResponse, error) {

@@ -54,10 +54,24 @@ Bu dosya projenin görev listesidir (kaynak doğruluk). Durum: `[ ]` bekliyor, `
   (Python imzalı key → Go doğrulama → upstream → PII redaction → audit) gerçek
   servislerle doğrulandı.
 
-## Phase 2 (MVP dışı, dokümante edildi)
-- Streaming yanıtlar (şu an non-streaming)
-- Smart routing (maliyet bazlı model seçimi)
-- Gelişmiş policy kuralları (deny/route, özelleştirilebilir regex)
-- Rate limiting / kota
+## Phase 2
+- [x] **P2-A** `scripts/gen-env.sh` — .env secret/password alanlarını otomatik doldurur
+- [x] **P2-B** Streaming yanıtlar (OpenAI/Anthropic/Gemini SSE → OpenAI formatı; uçtan uca)
+- [x] **P2-C** Smart routing (prompt boyutuna göre light/heavy model seçimi)
+- [x] **P2-D** Rate limiting / kota (per-user istek/dk + günlük token; gateway RAM sayaçları)
+- [x] **P2-E** Panel UX cilalama (streaming chat, ikonlu navigasyon, tutarlı tasarım)
+
+## Phase 3
+- [x] **P3-A** policy_rules + alerts şeması (migration 0005)
+- [x] **P3-B** Gateway policy engine v2: built-in detektörler + Türkçe NLP-lite
+  (finansal/müşteri sözlükleri) + admin custom kuralları; mask/block/flag;
+  async alert writer (kullanıcı maskeyi görmez, admin'e uyarı gider)
+- [x] **P3-C** API: policy rules CRUD + alerts listele/çöz
+- [x] **P3-D** Panel: Policy Rules & Alerts ekranları (Türkçe)
+- [x] **P3-E** Tüm flow ekran görüntüleri (`docs/FLOW.md`, `docs/screenshots/`)
+
+## Phase 4 (gelecek)
+- Model-tabanlı NLP sınıflandırıcı (sözlük yerine/yanında)
 - LDAP / SSO
 - Ollama (lokal model) adapteri
+- Verified (imzalı) commit'ler

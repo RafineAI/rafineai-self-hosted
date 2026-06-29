@@ -11,6 +11,10 @@ This repository is a **monorepo**: the Go gateway, the Python management API, th
 Next.js panel, the database schema, and the deployment tooling all live here and are
 released together as versioned container images.
 
+> 📸 **See the full product flow with screenshots:** [`docs/FLOW.md`](./docs/FLOW.md)
+> — login, chat, providers, users, policy rules, alerts (masking + admin alerts),
+> and audit logs.
+
 ---
 
 ## Architecture

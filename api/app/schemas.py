@@ -28,14 +28,21 @@ class RefreshRequest(BaseModel):
 # ---- Users ----
 class UserCreate(BaseModel):
     email: str = Field(pattern=_EMAIL)
-    password: str = Field(min_length=8)
+    # Optional: when omitted the system generates a temporary password the user
+    # must change on first sign-in (returned to the admin to relay).
+    password: str | None = Field(default=None, min_length=8)
     role: str = Field(default="user", pattern="^(admin|user)$")
+    # Optional per-user limits (null = use gateway default; 0 = unlimited).
+    rate_limit_rpm: int | None = Field(default=None, ge=0)
+    daily_token_quota: int | None = Field(default=None, ge=0)
 
 
 class UserUpdate(BaseModel):
     password: str | None = Field(default=None, min_length=8)
     role: str | None = Field(default=None, pattern="^(admin|user)$")
     is_active: bool | None = None
+    rate_limit_rpm: int | None = Field(default=None, ge=0)
+    daily_token_quota: int | None = Field(default=None, ge=0)
 
 
 class UserOut(BaseModel):
@@ -43,6 +50,20 @@ class UserOut(BaseModel):
     email: str
     role: str
     is_active: bool
+    must_change_password: bool = False
+    rate_limit_rpm: int | None = None
+    daily_token_quota: int | None = None
+
+
+class UserCreateResult(UserOut):
+    # The system-generated password, returned so the admin can relay it to the
+    # user. Null when the admin supplied the password explicitly.
+    generated_password: str | None = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8)
 
 
 # ---- Providers ----
@@ -59,6 +80,10 @@ class ProviderCreate(BaseModel):
     base_url: str | None = None
     default_model: str
     is_active: bool = True
+    # Smart routing (optional)
+    light_model: str | None = None
+    heavy_model: str | None = None
+    route_threshold_tokens: int | None = None
 
 
 class ProviderUpdate(BaseModel):
@@ -67,6 +92,9 @@ class ProviderUpdate(BaseModel):
     base_url: str | None = None
     default_model: str | None = None
     is_active: bool | None = None
+    light_model: str | None = None
+    heavy_model: str | None = None
+    route_threshold_tokens: int | None = None
 
 
 class ProviderOut(BaseModel):
@@ -78,6 +106,9 @@ class ProviderOut(BaseModel):
     base_url: str | None
     default_model: str
     is_active: bool
+    light_model: str | None = None
+    heavy_model: str | None = None
+    route_threshold_tokens: int = 2000
     # For the current user: whether they've connected (oauth2 providers).
     connected: bool = False
 
@@ -101,6 +132,48 @@ class MessageOut(BaseModel):
     role: str
     content: str
     tokens: int
+
+
+# ---- Policy rules & alerts ----
+class PolicyRuleCreate(BaseModel):
+    name: str
+    category: str = "custom"
+    kind: str = Field(pattern="^(regex|keyword)$")
+    pattern: str
+    action: str = Field(pattern="^(mask|block|flag)$")
+    severity: str = Field(default="medium", pattern="^(low|medium|high)$")
+    enabled: bool = True
+
+
+class PolicyRuleUpdate(BaseModel):
+    pattern: str | None = None
+    action: str | None = Field(default=None, pattern="^(mask|block|flag)$")
+    severity: str | None = Field(default=None, pattern="^(low|medium|high)$")
+    enabled: bool | None = None
+
+
+class PolicyRuleOut(BaseModel):
+    id: str
+    name: str
+    category: str
+    kind: str
+    pattern: str
+    action: str
+    severity: str
+    enabled: bool
+
+
+class AlertOut(BaseModel):
+    id: str
+    user_id: str | None
+    conversation_id: str | None
+    rule_name: str
+    category: str
+    action: str
+    severity: str
+    snippet: str
+    resolved: bool
+    created_at: str
 
 
 class ChatRequest(BaseModel):

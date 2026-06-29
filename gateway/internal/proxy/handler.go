@@ -11,29 +11,62 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/rafineai/rafineai-self-hosted/gateway/internal/alert"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/audit"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/policy"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/provider"
+	"github.com/rafineai/rafineai-self-hosted/gateway/internal/ratelimit"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/signing"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/state"
 )
 
 // Handler holds the dependencies for the chat endpoint.
 type Handler struct {
-	MasterKey string
-	State     *state.Store
-	Audit     *audit.Writer
-	Client    *http.Client
+	MasterKey     string
+	State         *state.Store
+	Audit         *audit.Writer
+	Alerts        *alert.Writer
+	Client        *http.Client
+	Limiter       *ratelimit.Limiter
+	DefaultLimits ratelimit.Limits
 }
 
-// New builds a Handler with a sane default HTTP client.
-func New(masterKey string, st *state.Store, aw *audit.Writer) *Handler {
+// New builds a Handler with a sane default HTTP client and rate limiter.
+func New(masterKey string, st *state.Store, aw *audit.Writer, al *alert.Writer, defaults ratelimit.Limits) *Handler {
 	return &Handler{
-		MasterKey: masterKey,
-		State:     st,
-		Audit:     aw,
-		Client:    &http.Client{Timeout: 120 * time.Second},
+		MasterKey:     masterKey,
+		State:         st,
+		Audit:         aw,
+		Alerts:        al,
+		Client:        &http.Client{Timeout: 120 * time.Second},
+		Limiter:       ratelimit.New(),
+		DefaultLimits: defaults,
 	}
+}
+
+// snippet returns a short, already-masked excerpt safe to store in an alert.
+func snippet(masked string) string {
+	const max = 160
+	s := strings.TrimSpace(masked)
+	if len(s) > max {
+		return s[:max] + "…"
+	}
+	return s
+}
+
+// limitsFor resolves a user's effective limits, applying per-user overrides on
+// top of the gateway defaults.
+func (h *Handler) limitsFor(snap *state.Snapshot, userID string) ratelimit.Limits {
+	lim := h.DefaultLimits
+	if ul, ok := snap.UserLimitFor(userID); ok {
+		if ul.RPM >= 0 {
+			lim.RPM = ul.RPM
+		}
+		if ul.DailyTokens >= 0 {
+			lim.DailyTokens = ul.DailyTokens
+		}
+	}
+	return lim
 }
 
 // claimsFromRequest verifies the bearer token and returns the claims.
@@ -93,17 +126,43 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 			"provider has no usable credential")
 	}
 
-	// Pre-flight policy: redact PII in outgoing content.
+	// Rate / quota enforcement (per user, in RAM).
+	if ok, reason := h.Limiter.Allow(claims.UserID, h.limitsFor(snap, claims.UserID)); !ok {
+		h.audit(claims, p, firstNonEmpty(req.Model, p.DefaultModel), 0, 0,
+			http.StatusTooManyRequests, map[string]struct{}{}, c, reason, start)
+		return jsonError(c, http.StatusTooManyRequests, reason, "rate limit or quota exceeded")
+	}
+
+	// Pre-flight policy: built-in detectors + admin custom rules. Masking is
+	// applied only to the upstream copy (the user never sees the mask); every
+	// firing raises an admin alert; a block-action match rejects the request.
+	rules := append(policy.Builtins(), snap.Rules...)
 	appliedSet := map[string]struct{}{}
+	blocked := false
+	convID := c.Request().Header.Get("X-Rafine-Conversation")
 	for i, m := range req.Messages {
 		if m.Role == "assistant" {
 			continue
 		}
-		res := policy.Apply(m.Content)
+		res := policy.Apply(m.Content, rules)
 		req.Messages[i].Content = res.Text
-		for _, r := range res.Applied {
-			appliedSet[r] = struct{}{}
+		for _, f := range res.Findings {
+			appliedSet[f.Rule] = struct{}{}
+			h.Alerts.Enqueue(alert.Entry{
+				UserID: claims.UserID, ConversationID: convID,
+				RuleName: f.Rule, Category: f.Category, Action: f.Action,
+				Severity: f.Severity, Snippet: snippet(res.Text),
+			})
 		}
+		if res.Blocked {
+			blocked = true
+		}
+	}
+	if blocked {
+		h.audit(claims, p, firstNonEmpty(req.Model, p.DefaultModel), 0, 0,
+			http.StatusUnprocessableEntity, appliedSet, c, "blocked_by_policy", start)
+		return jsonError(c, http.StatusUnprocessableEntity, "policy_blocked",
+			"request blocked by content policy")
 	}
 
 	adapter := provider.For(p.Type)
@@ -111,7 +170,16 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 		return jsonError(c, http.StatusInternalServerError, "unsupported_provider", "no adapter for provider type")
 	}
 
+	// Smart routing: pick the effective model (light/heavy) before dispatch so
+	// adapters and the audit log all see the same resolved model.
+	req.Model = provider.ResolveModel(p, req)
+
 	ctx := c.Request().Context()
+
+	if req.Stream {
+		return h.streamChat(c, adapter, p, credential, req, claims, appliedSet, start)
+	}
+
 	upstreamReq, err := adapter.BuildRequest(ctx, p, credential, req)
 	if err != nil {
 		return jsonError(c, http.StatusInternalServerError, "build_failed", err.Error())
@@ -137,10 +205,105 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 		return jsonError(c, http.StatusBadGateway, "parse_error", err.Error())
 	}
 
+	h.Limiter.AddTokens(claims.UserID, parsed.PromptTokens+parsed.CompletionTokens)
 	h.audit(claims, p, firstNonEmpty(req.Model, p.DefaultModel),
 		parsed.PromptTokens, parsed.CompletionTokens, http.StatusOK, appliedSet, c, "", start)
 
 	return c.JSON(http.StatusOK, openAIResponse(firstNonEmpty(req.Model, p.DefaultModel), parsed))
+}
+
+// streamChat proxies a streaming completion: it reads the upstream SSE,
+// re-emits OpenAI-compatible chat.completion.chunk events to the client, and
+// audits the captured usage at the end.
+func (h *Handler) streamChat(c echo.Context, adapter provider.Adapter, p state.Provider,
+	credential string, req provider.ChatRequest, claims signing.Claims,
+	appliedSet map[string]struct{}, start time.Time) error {
+
+	ctx := c.Request().Context()
+	model := firstNonEmpty(req.Model, p.DefaultModel)
+
+	upstreamReq, err := adapter.BuildStreamRequest(ctx, p, credential, req)
+	if err != nil {
+		return jsonError(c, http.StatusInternalServerError, "build_failed", err.Error())
+	}
+	resp, err := h.Client.Do(upstreamReq)
+	if err != nil {
+		h.audit(claims, p, model, 0, 0, http.StatusBadGateway, appliedSet, c, err.Error(), start)
+		return jsonError(c, http.StatusBadGateway, "upstream_error", err.Error())
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		h.audit(claims, p, model, 0, 0, resp.StatusCode, appliedSet, c, string(body), start)
+		return c.JSONBlob(resp.StatusCode, body)
+	}
+
+	// Switch the client connection into SSE mode.
+	hdr := c.Response().Header()
+	hdr.Set("Content-Type", "text/event-stream")
+	hdr.Set("Cache-Control", "no-cache")
+	hdr.Set("Connection", "keep-alive")
+	hdr.Set("X-Accel-Buffering", "no") // disable nginx proxy buffering
+	c.Response().WriteHeader(http.StatusOK)
+	flusher, _ := c.Response().Writer.(http.Flusher)
+
+	w := c.Response().Writer
+	writeChunk := func(delta map[string]any, finish any) {
+		chunk := map[string]any{
+			"id":      "chatcmpl-rafine",
+			"object":  "chat.completion.chunk",
+			"model":   model,
+			"choices": []map[string]any{{"index": 0, "delta": delta, "finish_reason": finish}},
+		}
+		b, _ := json.Marshal(chunk)
+		w.Write([]byte("data: "))
+		w.Write(b)
+		w.Write([]byte("\n\n"))
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+
+	// Initial role delta (OpenAI convention).
+	writeChunk(map[string]any{"role": "assistant"}, nil)
+
+	usage, decErr := adapter.DecodeStream(resp.Body, func(textDelta string) {
+		writeChunk(map[string]any{"content": textDelta}, nil)
+	})
+
+	// Final stop chunk, then a usage-only chunk (OpenAI include_usage style),
+	// then the DONE sentinel.
+	writeChunk(map[string]any{}, "stop")
+	usageChunk := map[string]any{
+		"id":      "chatcmpl-rafine",
+		"object":  "chat.completion.chunk",
+		"model":   model,
+		"choices": []map[string]any{},
+		"usage": map[string]int{
+			"prompt_tokens":     usage.PromptTokens,
+			"completion_tokens": usage.CompletionTokens,
+			"total_tokens":      usage.PromptTokens + usage.CompletionTokens,
+		},
+	}
+	ub, _ := json.Marshal(usageChunk)
+	w.Write([]byte("data: "))
+	w.Write(ub)
+	w.Write([]byte("\n\n"))
+	w.Write([]byte("data: [DONE]\n\n"))
+	if flusher != nil {
+		flusher.Flush()
+	}
+
+	status := http.StatusOK
+	errMsg := ""
+	if decErr != nil {
+		status = http.StatusBadGateway
+		errMsg = decErr.Error()
+	}
+	h.Limiter.AddTokens(claims.UserID, usage.PromptTokens+usage.CompletionTokens)
+	h.audit(claims, p, model, usage.PromptTokens, usage.CompletionTokens, status, appliedSet, c, errMsg, start)
+	return nil
 }
 
 func (h *Handler) audit(claims signing.Claims, p state.Provider, model string,

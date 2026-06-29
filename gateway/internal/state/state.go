@@ -6,7 +6,11 @@
 // sync worker builds a fresh Snapshot and Store()s it.
 package state
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+
+	"github.com/rafineai/rafineai-self-hosted/gateway/internal/policy"
+)
 
 // Provider is the decrypted, ready-to-use view of an llm_providers row.
 type Provider struct {
@@ -18,6 +22,19 @@ type Provider struct {
 	BaseURL      string
 	DefaultModel string
 	Active       bool
+
+	// Smart routing (optional): when both LightModel and HeavyModel are set,
+	// the gateway routes by estimated prompt size around RouteThreshold tokens.
+	LightModel     string
+	HeavyModel     string
+	RouteThreshold int
+}
+
+// UserLimit holds a user's rate/quota caps. A negative value means "unset"
+// (fall back to the gateway default); 0 means unlimited.
+type UserLimit struct {
+	RPM         int
+	DailyTokens int
 }
 
 // Snapshot is an immutable, point-in-time view of all gateway state.
@@ -27,6 +44,17 @@ type Snapshot struct {
 	UserTokens map[string]string
 	// Blocked is the set of revoked key ids (kid).
 	Blocked map[string]struct{}
+	// UserLimits holds per-user rate/quota overrides by user id.
+	UserLimits map[string]UserLimit
+	// Rules holds compiled admin-defined custom policy rules (applied in
+	// addition to the gateway's built-in detectors).
+	Rules []*policy.Rule
+}
+
+// UserLimitFor returns the user's limit override and whether one exists.
+func (s *Snapshot) UserLimitFor(userID string) (UserLimit, bool) {
+	l, ok := s.UserLimits[userID]
+	return l, ok
 }
 
 // Store wraps an atomic pointer to the current Snapshot.
@@ -77,5 +105,6 @@ func emptySnapshot() *Snapshot {
 		Providers:  map[string]Provider{},
 		UserTokens: map[string]string{},
 		Blocked:    map[string]struct{}{},
+		UserLimits: map[string]UserLimit{},
 	}
 }

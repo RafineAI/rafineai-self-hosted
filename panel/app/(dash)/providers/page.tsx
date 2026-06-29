@@ -21,6 +21,9 @@ export default function ProvidersPage() {
     oauth_scopes: "",
     base_url: "",
     default_model: "",
+    light_model: "",
+    heavy_model: "",
+    route_threshold_tokens: "",
   });
 
   async function refresh() {
@@ -44,6 +47,11 @@ export default function ProvidersPage() {
       default_model: form.default_model,
     };
     if (form.base_url) payload.base_url = form.base_url;
+    if (form.light_model) payload.light_model = form.light_model;
+    if (form.heavy_model) payload.heavy_model = form.heavy_model;
+    if (form.route_threshold_tokens) {
+      payload.route_threshold_tokens = parseInt(form.route_threshold_tokens, 10);
+    }
     if (form.auth_mode === "api_key") {
       payload.api_key = form.api_key;
     } else {
@@ -55,7 +63,10 @@ export default function ProvidersPage() {
     }
     try {
       await api("/api/providers", { method: "POST", body: JSON.stringify(payload) });
-      setForm({ ...form, name: "", api_key: "", default_model: "" });
+      setForm({
+        ...form, name: "", api_key: "", default_model: "",
+        light_model: "", heavy_model: "", route_threshold_tokens: "",
+      });
       refresh();
     } catch (e: any) {
       setError(e.message);
@@ -77,7 +88,7 @@ export default function ProvidersPage() {
 
   return (
     <div className="h-screen overflow-y-auto p-8">
-      <h1 className="mb-6 text-2xl font-bold">LLM Providers</h1>
+      <h1 className="page-title mb-6">LLM Providers</h1>
 
       <form onSubmit={create} className="card mb-8 space-y-4 p-5">
         <div className="grid grid-cols-2 gap-4">
@@ -148,6 +159,31 @@ export default function ProvidersPage() {
           <input className="input" value={form.base_url} onChange={(e) => set("base_url", e.target.value)} />
         </Field>
 
+        <details className="rounded-md border border-slate-200 p-3">
+          <summary className="cursor-pointer text-sm font-medium text-slate-700">
+            Smart routing (optional)
+          </summary>
+          <p className="mt-2 mb-3 text-xs text-slate-500">
+            When both models are set, short prompts use the light model and longer
+            prompts (≥ threshold tokens) use the heavy one.
+          </p>
+          <div className="grid grid-cols-3 gap-4">
+            <Field label="Light model">
+              <input className="input" placeholder="e.g. gpt-4o-mini"
+                value={form.light_model} onChange={(e) => set("light_model", e.target.value)} />
+            </Field>
+            <Field label="Heavy model">
+              <input className="input" placeholder="e.g. gpt-4o"
+                value={form.heavy_model} onChange={(e) => set("heavy_model", e.target.value)} />
+            </Field>
+            <Field label="Threshold (tokens)">
+              <input className="input" type="number" placeholder="2000"
+                value={form.route_threshold_tokens}
+                onChange={(e) => set("route_threshold_tokens", e.target.value)} />
+            </Field>
+          </div>
+        </details>
+
         <button className="btn" type="submit">
           Add provider
         </button>
@@ -164,6 +200,11 @@ export default function ProvidersPage() {
                 <span className="text-xs text-slate-400">
                   ({p.type} · {p.default_model} · {p.auth_mode})
                 </span>
+                {p.light_model && p.heavy_model && (
+                  <span className="ml-2 rounded bg-indigo-100 px-2 py-0.5 text-xs text-indigo-700">
+                    smart routing
+                  </span>
+                )}
               </p>
               <p className="text-xs text-slate-500">
                 {p.auth_mode === "api_key"

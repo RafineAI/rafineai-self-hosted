@@ -26,10 +26,13 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-slate-100 via-slate-100 to-indigo-100 px-4">
       <div className="card w-full max-w-sm p-8">
         <div className="mb-6 text-center">
-          <h1 className="text-2xl font-bold text-brand">RafineAI</h1>
+          <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-brand text-xl font-bold text-white shadow">
+            R
+          </div>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">RafineAI</h1>
           <p className="mt-1 text-sm text-slate-500">Sign in to your control plane</p>
         </div>
         <form onSubmit={onSubmit} className="space-y-4">

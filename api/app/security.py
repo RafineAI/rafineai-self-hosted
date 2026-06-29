@@ -1,12 +1,20 @@
-"""Password hashing and JWT session tokens."""
+"""Password hashing, generation, and JWT session tokens."""
 from __future__ import annotations
 
 import datetime as dt
+import secrets
 
 import bcrypt
 import jwt
 
 ALGO = "HS256"
+
+# Unambiguous alphabet (no O/0/I/l) for human-friendly temp passwords.
+_ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+
+
+def generate_password(length: int = 14) -> str:
+    return "".join(secrets.choice(_ALPHABET) for _ in range(length))
 
 
 def hash_password(password: str) -> str:
