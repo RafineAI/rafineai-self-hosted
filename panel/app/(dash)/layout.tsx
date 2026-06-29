@@ -10,6 +10,8 @@ const NAV = [
   { href: "/chat", label: "Chat", icon: "💬", adminOnly: false },
   { href: "/providers", label: "LLM Providers", icon: "🔌", adminOnly: true },
   { href: "/users", label: "Users", icon: "👥", adminOnly: true },
+  { href: "/policy", label: "Policy Rules", icon: "🛡️", adminOnly: true },
+  { href: "/alerts", label: "Alerts", icon: "🔔", adminOnly: true },
   { href: "/audit", label: "Audit Logs", icon: "📋", adminOnly: true },
 ];
 

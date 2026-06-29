@@ -41,6 +41,37 @@ export interface Message {
   tokens: number;
 }
 
+export interface PolicyRule {
+  id: string;
+  name: string;
+  category: string;
+  kind: string;
+  pattern: string;
+  action: string;
+  severity: string;
+  enabled: boolean;
+}
+
+export interface Builtin {
+  name: string;
+  category: string;
+  action: string;
+  severity: string;
+}
+
+export interface Alert {
+  id: string;
+  user_id: string | null;
+  conversation_id: string | null;
+  rule_name: string;
+  category: string;
+  action: string;
+  severity: string;
+  snippet: string;
+  resolved: boolean;
+  created_at: string;
+}
+
 export interface AuditRow {
   id: string;
   user_id: string | null;
