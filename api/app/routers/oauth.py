@@ -134,5 +134,5 @@ async def oauth_callback(
         crypto.encrypt(settings.rafine_master_key, refresh) if refresh else None,
         expires_at,
     )
-    # Send the user back to the panel.
-    return RedirectResponse(url=f"{settings.rafine_public_url}/providers?connected=1")
+    # Send the user back to their connections page.
+    return RedirectResponse(url=f"{settings.rafine_public_url}/connections?connected=1")

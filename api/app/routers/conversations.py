@@ -204,6 +204,17 @@ async def chat_stream(
                     },
                     json={"model": convo["model"], "messages": messages, "stream": True},
                 ) as resp:
+                    if resp.status_code >= 400:
+                        await resp.aread()
+                        detail = resp.text
+                        msg = "Sağlayıcı hazır değil (yapılandırma eşitleniyor olabilir)."
+                        if "oauth_required" in detail:
+                            msg = "Bu sağlayıcıyı önce Bağlantılarım'dan bağlamalısınız."
+                        elif "rate_limit" in detail or "quota" in detail:
+                            msg = "İstek/kota limitine ulaşıldı."
+                        yield f"data: {json.dumps({'choices':[{'delta':{'content':msg}}]})}\n\n"
+                        yield "data: [DONE]\n\n"
+                        return
                     async for line in resp.aiter_lines():
                         if not line.startswith("data:"):
                             continue

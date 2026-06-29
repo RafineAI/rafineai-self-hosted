@@ -26,7 +26,7 @@ func Load() Config {
 		Port:             getenv("GATEWAY_PORT", "8080"),
 		DatabaseURL:      getenv("DATABASE_URL", ""),
 		MasterKey:        getenv("RAFINE_MASTER_KEY", ""),
-		SyncInterval:     time.Duration(getenvInt("GATEWAY_SYNC_INTERVAL_SEC", 30)) * time.Second,
+		SyncInterval:     time.Duration(getenvInt("GATEWAY_SYNC_INTERVAL_SEC", 10)) * time.Second,
 		AuditBatchSize:   getenvInt("GATEWAY_AUDIT_BATCH_SIZE", 50),
 		AuditFlushPeriod: time.Duration(getenvInt("GATEWAY_AUDIT_FLUSH_MS", 2000)) * time.Millisecond,
 		DefaultRPM:         getenvInt("GATEWAY_DEFAULT_RPM", 0),

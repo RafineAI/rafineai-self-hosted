@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { api, streamChat } from "@/lib/api";
 import type { Conversation, Message, Provider } from "@/lib/types";
 
@@ -9,13 +10,20 @@ export default function ChatPage() {
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  const [selectedProvider, setSelectedProvider] = useState<string>("");
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    api<Provider[]>("/api/providers").then(setProviders).catch(() => {});
+    api<Provider[]>("/api/providers")
+      .then((ps) => {
+        setProviders(ps);
+        const usable = ps.find((p) => p.is_active && (p.auth_mode !== "oauth2" || p.connected));
+        if (usable) setSelectedProvider(usable.id);
+      })
+      .catch(() => {});
     refreshConversations();
   }, []);
 
@@ -24,41 +32,59 @@ export default function ChatPage() {
   }, [messages]);
 
   async function refreshConversations() {
-    const list = await api<Conversation[]>("/api/conversations");
-    setConversations(list);
+    setConversations(await api<Conversation[]>("/api/conversations"));
   }
 
   async function openConversation(id: string) {
     setActiveId(id);
     setError("");
-    const msgs = await api<Message[]>(`/api/conversations/${id}/messages`);
-    setMessages(msgs);
+    setMessages(await api<Message[]>(`/api/conversations/${id}/messages`));
   }
 
-  async function newConversation(providerId: string) {
-    const convo = await api<Conversation>("/api/conversations", {
-      method: "POST",
-      body: JSON.stringify({ provider_id: providerId, title: "New conversation" }),
-    });
-    await refreshConversations();
-    setActiveId(convo.id);
+  function newChat() {
+    setActiveId(null);
     setMessages([]);
+    setError("");
   }
+
+  const usableProviders = providers.filter(
+    (p) => p.is_active && (p.auth_mode !== "oauth2" || p.connected),
+  );
+  const activeConvo = conversations.find((c) => c.id === activeId) ?? null;
 
   async function send() {
-    if (!input.trim() || !activeId || sending) return;
+    if (!input.trim() || sending) return;
     const content = input.trim();
-    const convId = activeId;
     setInput("");
     setSending(true);
     setError("");
-    // Optimistic user bubble + an empty assistant bubble we stream into.
-    setMessages((m) => [
-      ...m,
-      { id: "tmp-u", role: "user", content, tokens: 0 },
-      { id: "tmp-a", role: "assistant", content: "", tokens: 0 },
-    ]);
+
+    let convId = activeId;
     try {
+      // Start a new conversation with the selected model if needed.
+      if (!convId) {
+        if (!selectedProvider) {
+          setError("Önce bir model seçin (veya yöneticinizden bir sağlayıcı isteyin).");
+          setSending(false);
+          return;
+        }
+        const convo = await api<Conversation>("/api/conversations", {
+          method: "POST",
+          body: JSON.stringify({
+            provider_id: selectedProvider,
+            title: content.slice(0, 40),
+          }),
+        });
+        convId = convo.id;
+        setActiveId(convId);
+        await refreshConversations();
+      }
+
+      setMessages((m) => [
+        ...m,
+        { id: "tmp-u", role: "user", content, tokens: 0 },
+        { id: "tmp-a", role: "assistant", content: "", tokens: 0 },
+      ]);
       await streamChat(convId, content, (delta) => {
         setMessages((m) => {
           const copy = [...m];
@@ -69,30 +95,31 @@ export default function ChatPage() {
           return copy;
         });
       });
-      // Reconcile with canonical persisted messages (ids, tokens).
-      const msgs = await api<Message[]>(`/api/conversations/${convId}/messages`);
-      setMessages(msgs);
+      setMessages(await api<Message[]>(`/api/conversations/${convId}/messages`));
       refreshConversations();
     } catch (e: any) {
-      setError(e.message ?? "Failed to send");
+      setError(e.message ?? "Gönderilemedi");
     } finally {
       setSending(false);
     }
   }
 
-  const activeProviders = providers.filter((p) => p.is_active);
-  const activeConvo = conversations.find((c) => c.id === activeId) ?? null;
+  // Model shown in the header: existing conversation's model, or the selector for a new chat.
+  const headerModel = activeConvo?.model;
 
   return (
     <div className="flex h-screen">
-      {/* Conversation list */}
+      {/* Conversation history */}
       <div className="flex w-72 flex-col border-r border-slate-200 bg-white">
-        <div className="border-b border-slate-200 p-3">
-          <ProviderPicker providers={activeProviders} onPick={newConversation} />
+        <div className="p-3">
+          <button className="btn w-full" onClick={newChat}>+ Yeni sohbet</button>
         </div>
         <div className="flex-1 overflow-y-auto">
+          <p className="px-4 pb-1 pt-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Geçmiş
+          </p>
           {conversations.length === 0 && (
-            <p className="p-4 text-sm text-slate-400">No conversations yet.</p>
+            <p className="p-4 text-sm text-slate-400">Henüz sohbet yok.</p>
           )}
           {conversations.map((c) => (
             <button
@@ -111,112 +138,86 @@ export default function ChatPage() {
 
       {/* Thread */}
       <div className="flex flex-1 flex-col">
-        {!activeId ? (
-          <div className="flex flex-1 flex-col items-center justify-center text-center text-slate-400">
-            <div className="mb-3 text-4xl">💬</div>
-            <p className="font-medium text-slate-500">Select or start a conversation</p>
-            <p className="text-sm">Pick a provider above to begin chatting.</p>
-          </div>
-        ) : (
-          <>
-            <div className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
-              <span className="truncate font-medium">{activeConvo?.title ?? "Conversation"}</span>
-              {activeConvo?.model && (
-                <span className="badge bg-slate-100 text-slate-600">{activeConvo.model}</span>
+        {/* Header: ChatGPT-style model selector for new chats, model label otherwise */}
+        <div className="flex items-center justify-between border-b border-slate-200 bg-white px-6 py-3">
+          {activeId ? (
+            <>
+              <span className="truncate font-medium">{activeConvo?.title ?? "Sohbet"}</span>
+              {headerModel && <span className="badge bg-slate-100 text-slate-600">{headerModel}</span>}
+            </>
+          ) : (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-slate-500">Model:</span>
+              {usableProviders.length > 0 ? (
+                <select
+                  className="input max-w-xs"
+                  value={selectedProvider}
+                  onChange={(e) => setSelectedProvider(e.target.value)}
+                >
+                  {usableProviders.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name} — {p.default_model}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="text-sm text-amber-600">
+                  Kullanılabilir model yok.{" "}
+                  <Link href="/connections" className="underline">Kendi hesabını bağla</Link>
+                </span>
               )}
             </div>
-            <div className="flex-1 space-y-4 overflow-y-auto p-6">
-              {messages.map((m, i) => {
-                const isLast = i === messages.length - 1;
-                const streaming = sending && isLast && m.role === "assistant";
-                return (
-                  <div
-                    key={m.id + i}
-                    className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}
-                  >
-                    <div
-                      className={`max-w-2xl whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
-                        m.role === "user"
-                          ? "bg-brand text-white"
-                          : "border border-slate-200 bg-white text-slate-800"
-                      } ${streaming && !m.content ? "caret" : ""}`}
-                    >
-                      {m.content}
-                      {streaming && m.content && <span className="caret" />}
-                    </div>
-                  </div>
-                );
-              })}
-              <div ref={bottomRef} />
-            </div>
-            {error && <p className="px-6 pb-2 text-sm text-red-600">{error}</p>}
-            <div className="flex items-end gap-2 border-t border-slate-200 bg-white p-4">
-              <textarea
-                className="input max-h-40 resize-none"
-                rows={1}
-                placeholder="Type a message…  (Enter to send, Shift+Enter for newline)"
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    if (!sending) send();
-                  }
-                }}
-              />
-              <button className="btn" onClick={send} disabled={sending || !input.trim()}>
-                {sending ? "…" : "Send"}
-              </button>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
-  );
-}
-
-function ProviderPicker({
-  providers,
-  onPick,
-}: {
-  providers: Provider[];
-  onPick: (id: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-  if (providers.length === 0) {
-    return <p className="text-xs text-slate-400">No active providers. Ask an admin.</p>;
-  }
-  return (
-    <div className="relative">
-      <button className="btn w-full" onClick={() => setOpen((o) => !o)}>
-        + New conversation
-      </button>
-      {open && (
-        <div className="absolute z-10 mt-1 w-full rounded-md border border-slate-200 bg-white shadow-lg">
-          {providers.map((p) => (
-            <button
-              key={p.id}
-              onClick={() => {
-                onPick(p.id);
-                setOpen(false);
-              }}
-              className="block w-full px-3 py-2 text-left text-sm hover:bg-slate-100"
-              disabled={p.auth_mode === "oauth2" && !p.connected}
-              title={
-                p.auth_mode === "oauth2" && !p.connected
-                  ? "Connect this provider first (Providers page)"
-                  : ""
-              }
-            >
-              {p.name}
-              <span className="block text-xs text-slate-400">
-                {p.type} · {p.default_model}
-                {p.auth_mode === "oauth2" && !p.connected ? " · not connected" : ""}
-              </span>
-            </button>
-          ))}
+          )}
         </div>
-      )}
+
+        {messages.length === 0 && !activeId ? (
+          <div className="flex flex-1 flex-col items-center justify-center text-center text-slate-400">
+            <div className="mb-3 text-4xl">💬</div>
+            <p className="font-medium text-slate-500">Yeni bir sohbet başlat</p>
+            <p className="text-sm">Yukarıdan modeli seç, mesajını yaz.</p>
+          </div>
+        ) : (
+          <div className="flex-1 space-y-4 overflow-y-auto p-6">
+            {messages.map((m, i) => {
+              const isLast = i === messages.length - 1;
+              const streaming = sending && isLast && m.role === "assistant";
+              return (
+                <div key={m.id + i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+                  <div
+                    className={`max-w-2xl whitespace-pre-wrap rounded-2xl px-4 py-2.5 text-sm shadow-sm ${
+                      m.role === "user" ? "bg-brand text-white" : "border border-slate-200 bg-white text-slate-800"
+                    } ${streaming && !m.content ? "caret" : ""}`}
+                  >
+                    {m.content}
+                    {streaming && m.content && <span className="caret" />}
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={bottomRef} />
+          </div>
+        )}
+
+        {error && <p className="px-6 pb-2 text-sm text-red-600">{error}</p>}
+        <div className="flex items-end gap-2 border-t border-slate-200 bg-white p-4">
+          <textarea
+            className="input max-h-40 resize-none"
+            rows={1}
+            placeholder="Mesajını yaz…  (Enter ile gönder, Shift+Enter ile yeni satır)"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                if (!sending) send();
+              }
+            }}
+          />
+          <button className="btn" onClick={send} disabled={sending || !input.trim()}>
+            {sending ? "…" : "Gönder"}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
