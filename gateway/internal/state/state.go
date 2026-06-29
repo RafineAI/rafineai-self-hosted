@@ -18,6 +18,12 @@ type Provider struct {
 	BaseURL      string
 	DefaultModel string
 	Active       bool
+
+	// Smart routing (optional): when both LightModel and HeavyModel are set,
+	// the gateway routes by estimated prompt size around RouteThreshold tokens.
+	LightModel     string
+	HeavyModel     string
+	RouteThreshold int
 }
 
 // Snapshot is an immutable, point-in-time view of all gateway state.

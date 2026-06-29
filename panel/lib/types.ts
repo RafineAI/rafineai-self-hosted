@@ -19,6 +19,9 @@ export interface Provider {
   base_url: string | null;
   default_model: string;
   is_active: boolean;
+  light_model: string | null;
+  heavy_model: string | null;
+  route_threshold_tokens: number;
   connected: boolean;
 }
 

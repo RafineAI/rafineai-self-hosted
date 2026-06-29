@@ -111,6 +111,10 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 		return jsonError(c, http.StatusInternalServerError, "unsupported_provider", "no adapter for provider type")
 	}
 
+	// Smart routing: pick the effective model (light/heavy) before dispatch so
+	// adapters and the audit log all see the same resolved model.
+	req.Model = provider.ResolveModel(p, req)
+
 	ctx := c.Request().Context()
 
 	if req.Stream {

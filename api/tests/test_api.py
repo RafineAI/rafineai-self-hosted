@@ -81,6 +81,21 @@ async def test_provider_crud_hides_api_key(client):
     assert len(r.json()) == 1
 
 
+async def test_provider_smart_routing_fields(client):
+    owner_token = await login(client, *OWNER)
+    r = await client.post("/api/providers", headers=auth(owner_token), json={
+        "name": "Routed", "type": "openai", "auth_mode": "api_key",
+        "api_key": "sk", "default_model": "gpt-4o",
+        "light_model": "gpt-4o-mini", "heavy_model": "gpt-4o",
+        "route_threshold_tokens": 500,
+    })
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["light_model"] == "gpt-4o-mini"
+    assert body["heavy_model"] == "gpt-4o"
+    assert body["route_threshold_tokens"] == 500
+
+
 async def test_chat_flow_persists_messages(client, monkeypatch):
     owner_token = await login(client, *OWNER)
     r = await client.post("/api/providers", headers=auth(owner_token), json={

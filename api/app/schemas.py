@@ -73,6 +73,10 @@ class ProviderCreate(BaseModel):
     base_url: str | None = None
     default_model: str
     is_active: bool = True
+    # Smart routing (optional)
+    light_model: str | None = None
+    heavy_model: str | None = None
+    route_threshold_tokens: int | None = None
 
 
 class ProviderUpdate(BaseModel):
@@ -81,6 +85,9 @@ class ProviderUpdate(BaseModel):
     base_url: str | None = None
     default_model: str | None = None
     is_active: bool | None = None
+    light_model: str | None = None
+    heavy_model: str | None = None
+    route_threshold_tokens: int | None = None
 
 
 class ProviderOut(BaseModel):
@@ -92,6 +99,9 @@ class ProviderOut(BaseModel):
     base_url: str | None
     default_model: str
     is_active: bool
+    light_model: str | None = None
+    heavy_model: str | None = None
+    route_threshold_tokens: int = 2000
     # For the current user: whether they've connected (oauth2 providers).
     connected: bool = False
 

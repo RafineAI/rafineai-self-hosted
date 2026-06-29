@@ -56,7 +56,8 @@ func (s *Store) LoadSnapshot(ctx context.Context) (*state.Snapshot, error) {
 
 	// Providers.
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, name, type, auth_mode, api_key_encrypted, base_url, default_model, is_active
+		SELECT id, name, type, auth_mode, api_key_encrypted, base_url, default_model, is_active,
+		       light_model, heavy_model, route_threshold_tokens
 		FROM llm_providers`)
 	if err != nil {
 		return nil, err
@@ -65,18 +66,27 @@ func (s *Store) LoadSnapshot(ctx context.Context) (*state.Snapshot, error) {
 		var (
 			id, name, ptype, authMode, model string
 			encKey, baseURL                  *string
+			lightModel, heavyModel           *string
+			routeThreshold                   int
 			active                           bool
 		)
-		if err := rows.Scan(&id, &name, &ptype, &authMode, &encKey, &baseURL, &model, &active); err != nil {
+		if err := rows.Scan(&id, &name, &ptype, &authMode, &encKey, &baseURL, &model, &active,
+			&lightModel, &heavyModel, &routeThreshold); err != nil {
 			rows.Close()
 			return nil, err
 		}
 		p := state.Provider{
 			ID: id, Name: name, Type: ptype, AuthMode: authMode,
-			DefaultModel: model, Active: active,
+			DefaultModel: model, Active: active, RouteThreshold: routeThreshold,
 		}
 		if baseURL != nil {
 			p.BaseURL = *baseURL
+		}
+		if lightModel != nil {
+			p.LightModel = *lightModel
+		}
+		if heavyModel != nil {
+			p.HeavyModel = *heavyModel
 		}
 		if encKey != nil && *encKey != "" {
 			if dec, derr := secretbox.Decrypt(s.masterKey, *encKey); derr == nil {
