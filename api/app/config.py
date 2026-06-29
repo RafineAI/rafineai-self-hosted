@@ -1,0 +1,38 @@
+"""Application settings loaded from environment variables."""
+from __future__ import annotations
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+
+    # Core
+    database_url: str = "postgres://rafine:rafine@localhost:5432/rafineai"
+    rafine_master_key: str = "dev-master-key-change-me-please-32b"
+    jwt_secret: str = "dev-jwt-secret-change-me-please-32b"
+    jwt_access_ttl_min: int = 60
+    jwt_refresh_ttl_days: int = 14
+
+    # Default owner (seeded on first boot)
+    owner_email: str = "owner@rafine.local"
+    owner_password: str = "change-me-owner-password"
+
+    # Gateway location (api proxies chat traffic here)
+    gateway_url: str = "http://gateway:8080"
+
+    # Public URL (CORS / OAuth redirects)
+    rafine_public_url: str = "http://localhost"
+
+    # Path to SQL migrations (relative to repo root inside the container)
+    migrations_dir: str = "db/migrations"
+
+
+_settings: Settings | None = None
+
+
+def get_settings() -> Settings:
+    global _settings
+    if _settings is None:
+        _settings = Settings()
+    return _settings

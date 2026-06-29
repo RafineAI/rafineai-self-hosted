@@ -1,0 +1,76 @@
+# ============================================================
+#  RafineAI Self-Hosted — production stack (pre-built images).
+#  Images are pulled from the registry; tag via RAFINE_VERSION.
+#  For building from source, use docker-compose.dev.yml.
+# ============================================================
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  gateway:
+    image: ${REGISTRY:-ghcr.io/rafineai}/gateway:${RAFINE_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      GATEWAY_PORT: "8080"
+      DATABASE_URL: ${DATABASE_URL}
+      RAFINE_MASTER_KEY: ${RAFINE_MASTER_KEY}
+      GATEWAY_SYNC_INTERVAL_SEC: ${GATEWAY_SYNC_INTERVAL_SEC:-30}
+      GATEWAY_AUDIT_BATCH_SIZE: ${GATEWAY_AUDIT_BATCH_SIZE:-50}
+      GATEWAY_AUDIT_FLUSH_MS: ${GATEWAY_AUDIT_FLUSH_MS:-2000}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    image: ${REGISTRY:-ghcr.io/rafineai}/api:${RAFINE_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      API_PORT: "8000"
+      DATABASE_URL: ${DATABASE_URL}
+      RAFINE_MASTER_KEY: ${RAFINE_MASTER_KEY}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_ACCESS_TTL_MIN: ${JWT_ACCESS_TTL_MIN:-60}
+      JWT_REFRESH_TTL_DAYS: ${JWT_REFRESH_TTL_DAYS:-14}
+      OWNER_EMAIL: ${OWNER_EMAIL}
+      OWNER_PASSWORD: ${OWNER_PASSWORD}
+      GATEWAY_URL: http://gateway:8080
+      RAFINE_PUBLIC_URL: ${RAFINE_PUBLIC_URL}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  panel:
+    image: ${REGISTRY:-ghcr.io/rafineai}/panel:${RAFINE_VERSION:-latest}
+    restart: unless-stopped
+    environment:
+      # Same-origin; nginx proxies /api to the api service.
+      NEXT_PUBLIC_API_URL: ""
+    depends_on:
+      - api
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - panel
+      - api
+      - gateway
+
+volumes:
+  pgdata:
