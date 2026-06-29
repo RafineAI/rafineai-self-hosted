@@ -1,8 +1,11 @@
 """Conversations, messages, and the chat proxy to the gateway."""
 from __future__ import annotations
 
+import json
+
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 
 from .. import db, signing
 from ..config import Settings, get_settings
@@ -149,3 +152,88 @@ async def chat(
         "UPDATE conversations SET updated_at = now() WHERE id = $1", conversation_id
     )
     return ChatReply(message=MessageOut(**dict(row)))
+
+
+async def _prepare_chat(conversation_id: str, user_id: str, content: str, settings: Settings):
+    """Shared setup for chat: validate, persist the user turn, build history + key."""
+    convo = await _owned_conversation(conversation_id, user_id)
+    if not convo["provider_id"]:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "conversation has no provider")
+
+    await db.pool().execute(
+        "INSERT INTO messages (conversation_id, role, content) VALUES ($1, 'user', $2)",
+        conversation_id, content,
+    )
+    history = await db.pool().fetch(
+        "SELECT role, content FROM messages WHERE conversation_id = $1 ORDER BY created_at",
+        conversation_id,
+    )
+    messages = [{"role": r["role"], "content": r["content"]} for r in history]
+    gw_key = signing.sign(
+        settings.rafine_master_key, user_id=user_id,
+        key_id=f"user:{user_id}", provider_id=convo["provider_id"],
+    )
+    return convo, messages, gw_key
+
+
+@router.post("/{conversation_id}/chat/stream")
+async def chat_stream(
+    conversation_id: str,
+    body: ChatRequest,
+    user: CurrentUser = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+):
+    """Streaming chat: proxies the gateway SSE to the client and persists the
+    assembled assistant message once the stream completes."""
+    convo, messages, gw_key = await _prepare_chat(
+        conversation_id, user.id, body.content, settings
+    )
+
+    async def event_stream():
+        collected: list[str] = []
+        completion_tokens = 0
+        try:
+            async with httpx.AsyncClient(timeout=120) as client:
+                async with client.stream(
+                    "POST",
+                    f"{settings.gateway_url}/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {gw_key}",
+                        "X-Rafine-Provider": convo["provider_id"],
+                        "X-Rafine-Conversation": conversation_id,
+                    },
+                    json={"model": convo["model"], "messages": messages, "stream": True},
+                ) as resp:
+                    async for line in resp.aiter_lines():
+                        if not line.startswith("data:"):
+                            continue
+                        payload = line[len("data:"):].strip()
+                        # Forward the chunk verbatim to the client.
+                        yield f"data: {payload}\n\n"
+                        if payload == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(payload)
+                        except json.JSONDecodeError:
+                            continue
+                        for ch in chunk.get("choices", []):
+                            piece = ch.get("delta", {}).get("content")
+                            if piece:
+                                collected.append(piece)
+                        if chunk.get("usage"):
+                            completion_tokens = chunk["usage"].get("completion_tokens", 0)
+        finally:
+            # Persist whatever assistant content we received, even on disconnect.
+            content = "".join(collected)
+            if content:
+                await db.pool().execute(
+                    "INSERT INTO messages (conversation_id, role, content, tokens) "
+                    "VALUES ($1, 'assistant', $2, $3)",
+                    conversation_id, content, completion_tokens,
+                )
+                await db.pool().execute(
+                    "UPDATE conversations SET updated_at = now() WHERE id = $1",
+                    conversation_id,
+                )
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")

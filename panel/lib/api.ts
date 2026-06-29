@@ -82,6 +82,53 @@ export async function api<T = unknown>(
   return res.json() as Promise<T>;
 }
 
+/**
+ * Stream a chat reply. POSTs to the streaming endpoint and invokes onDelta for
+ * each token as it arrives. Resolves when the stream ends.
+ */
+export async function streamChat(
+  conversationId: string,
+  content: string,
+  onDelta: (text: string) => void,
+): Promise<void> {
+  const headers = new Headers({ "Content-Type": "application/json" });
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+
+  const res = await fetch(`${BASE}/api/conversations/${conversationId}/chat/stream`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ content }),
+  });
+  if (!res.ok || !res.body) {
+    throw new ApiError(res.status, "stream failed");
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const events = buffer.split("\n\n");
+    buffer = events.pop() ?? "";
+    for (const evt of events) {
+      const line = evt.split("\n").find((l) => l.startsWith("data:"));
+      if (!line) continue;
+      const payload = line.slice("data:".length).trim();
+      if (payload === "[DONE]") return;
+      try {
+        const chunk = JSON.parse(payload);
+        const piece = chunk.choices?.[0]?.delta?.content;
+        if (piece) onDelta(piece);
+      } catch {
+        /* ignore partial/non-JSON keepalives */
+      }
+    }
+  }
+}
+
 export async function login(email: string, password: string) {
   const res = await fetch(`${BASE}/api/auth/login`, {
     method: "POST",

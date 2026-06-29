@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { api, streamChat } from "@/lib/api";
 import type { Conversation, Message, Provider } from "@/lib/types";
 
 export default function ChatPage() {
@@ -46,22 +46,33 @@ export default function ChatPage() {
   }
 
   async function send() {
-    if (!input.trim() || !activeId) return;
+    if (!input.trim() || !activeId || sending) return;
     const content = input.trim();
+    const convId = activeId;
     setInput("");
     setSending(true);
     setError("");
-    // Optimistic user bubble.
-    setMessages((m) => [...m, { id: "tmp", role: "user", content, tokens: 0 }]);
+    // Optimistic user bubble + an empty assistant bubble we stream into.
+    setMessages((m) => [
+      ...m,
+      { id: "tmp-u", role: "user", content, tokens: 0 },
+      { id: "tmp-a", role: "assistant", content: "", tokens: 0 },
+    ]);
     try {
-      const reply = await api<{ message: Message }>(`/api/conversations/${activeId}/chat`, {
-        method: "POST",
-        body: JSON.stringify({ content }),
+      await streamChat(convId, content, (delta) => {
+        setMessages((m) => {
+          const copy = [...m];
+          const last = copy[copy.length - 1];
+          if (last && last.role === "assistant") {
+            copy[copy.length - 1] = { ...last, content: last.content + delta };
+          }
+          return copy;
+        });
       });
-      // Reload to get canonical ids + assistant reply.
-      const msgs = await api<Message[]>(`/api/conversations/${activeId}/messages`);
+      // Reconcile with canonical persisted messages (ids, tokens).
+      const msgs = await api<Message[]>(`/api/conversations/${convId}/messages`);
       setMessages(msgs);
-      void reply;
+      refreshConversations();
     } catch (e: any) {
       setError(e.message ?? "Failed to send");
     } finally {

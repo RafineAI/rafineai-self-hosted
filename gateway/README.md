@@ -43,8 +43,12 @@ the hook for richer deny/route rules later.
 ## Provider adapters
 
 `internal/provider` translates the unified OpenAI-shaped request to/from each
-upstream: `openai`, `anthropic`, `gemini`. **MVP is non-streaming.** Streaming
-passthrough is a documented Phase-2 item.
+upstream: `openai`, `anthropic`, `gemini`. Both **non-streaming** and
+**streaming** (`"stream": true`) are supported: each adapter builds the
+provider-specific streaming request and decodes its SSE, which the gateway
+re-emits as OpenAI-compatible `chat.completion.chunk` events (with a final
+usage chunk and `[DONE]`). Token usage is captured for the audit log even while
+streaming.
 
 ## Develop & test
 

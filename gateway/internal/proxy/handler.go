@@ -112,6 +112,11 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 	}
 
 	ctx := c.Request().Context()
+
+	if req.Stream {
+		return h.streamChat(c, adapter, p, credential, req, claims, appliedSet, start)
+	}
+
 	upstreamReq, err := adapter.BuildRequest(ctx, p, credential, req)
 	if err != nil {
 		return jsonError(c, http.StatusInternalServerError, "build_failed", err.Error())
@@ -141,6 +146,99 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 		parsed.PromptTokens, parsed.CompletionTokens, http.StatusOK, appliedSet, c, "", start)
 
 	return c.JSON(http.StatusOK, openAIResponse(firstNonEmpty(req.Model, p.DefaultModel), parsed))
+}
+
+// streamChat proxies a streaming completion: it reads the upstream SSE,
+// re-emits OpenAI-compatible chat.completion.chunk events to the client, and
+// audits the captured usage at the end.
+func (h *Handler) streamChat(c echo.Context, adapter provider.Adapter, p state.Provider,
+	credential string, req provider.ChatRequest, claims signing.Claims,
+	appliedSet map[string]struct{}, start time.Time) error {
+
+	ctx := c.Request().Context()
+	model := firstNonEmpty(req.Model, p.DefaultModel)
+
+	upstreamReq, err := adapter.BuildStreamRequest(ctx, p, credential, req)
+	if err != nil {
+		return jsonError(c, http.StatusInternalServerError, "build_failed", err.Error())
+	}
+	resp, err := h.Client.Do(upstreamReq)
+	if err != nil {
+		h.audit(claims, p, model, 0, 0, http.StatusBadGateway, appliedSet, c, err.Error(), start)
+		return jsonError(c, http.StatusBadGateway, "upstream_error", err.Error())
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		body, _ := io.ReadAll(resp.Body)
+		h.audit(claims, p, model, 0, 0, resp.StatusCode, appliedSet, c, string(body), start)
+		return c.JSONBlob(resp.StatusCode, body)
+	}
+
+	// Switch the client connection into SSE mode.
+	hdr := c.Response().Header()
+	hdr.Set("Content-Type", "text/event-stream")
+	hdr.Set("Cache-Control", "no-cache")
+	hdr.Set("Connection", "keep-alive")
+	hdr.Set("X-Accel-Buffering", "no") // disable nginx proxy buffering
+	c.Response().WriteHeader(http.StatusOK)
+	flusher, _ := c.Response().Writer.(http.Flusher)
+
+	w := c.Response().Writer
+	writeChunk := func(delta map[string]any, finish any) {
+		chunk := map[string]any{
+			"id":      "chatcmpl-rafine",
+			"object":  "chat.completion.chunk",
+			"model":   model,
+			"choices": []map[string]any{{"index": 0, "delta": delta, "finish_reason": finish}},
+		}
+		b, _ := json.Marshal(chunk)
+		w.Write([]byte("data: "))
+		w.Write(b)
+		w.Write([]byte("\n\n"))
+		if flusher != nil {
+			flusher.Flush()
+		}
+	}
+
+	// Initial role delta (OpenAI convention).
+	writeChunk(map[string]any{"role": "assistant"}, nil)
+
+	usage, decErr := adapter.DecodeStream(resp.Body, func(textDelta string) {
+		writeChunk(map[string]any{"content": textDelta}, nil)
+	})
+
+	// Final stop chunk, then a usage-only chunk (OpenAI include_usage style),
+	// then the DONE sentinel.
+	writeChunk(map[string]any{}, "stop")
+	usageChunk := map[string]any{
+		"id":      "chatcmpl-rafine",
+		"object":  "chat.completion.chunk",
+		"model":   model,
+		"choices": []map[string]any{},
+		"usage": map[string]int{
+			"prompt_tokens":     usage.PromptTokens,
+			"completion_tokens": usage.CompletionTokens,
+			"total_tokens":      usage.PromptTokens + usage.CompletionTokens,
+		},
+	}
+	ub, _ := json.Marshal(usageChunk)
+	w.Write([]byte("data: "))
+	w.Write(ub)
+	w.Write([]byte("\n\n"))
+	w.Write([]byte("data: [DONE]\n\n"))
+	if flusher != nil {
+		flusher.Flush()
+	}
+
+	status := http.StatusOK
+	errMsg := ""
+	if decErr != nil {
+		status = http.StatusBadGateway
+		errMsg = decErr.Error()
+	}
+	h.audit(claims, p, model, usage.PromptTokens, usage.CompletionTokens, status, appliedSet, c, errMsg, start)
+	return nil
 }
 
 func (h *Handler) audit(claims signing.Claims, p state.Provider, model string,

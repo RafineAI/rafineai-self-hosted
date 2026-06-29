@@ -105,6 +105,41 @@ func TestChatOAuthRequiredWhenNoToken(t *testing.T) {
 	}
 }
 
+func TestChatStreaming(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n\n"))
+		w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"lo\"}}]}\n\n"))
+		w.Write([]byte("data: {\"choices\":[],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2}}\n\n"))
+		w.Write([]byte("data: [DONE]\n\n"))
+	}))
+	defer upstream.Close()
+
+	p := state.Provider{ID: "p1", Type: "openai", AuthMode: "api_key",
+		APIKey: "sk", BaseURL: upstream.URL, DefaultModel: "gpt-4o", Active: true}
+	h, _ := newTestHandler(p)
+	key, _ := signing.Sign(masterKey, signing.Claims{UserID: "u1", KeyID: "k1", ProviderID: "p1"})
+
+	rec := doRequest(t, h, key, `{"stream":true,"messages":[{"role":"user","content":"hi"}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d", rec.Code)
+	}
+	out := rec.Body.String()
+	if !strings.Contains(out, "text/event-stream") && rec.Header().Get("Content-Type") != "text/event-stream" {
+		t.Fatalf("not SSE: %s", rec.Header().Get("Content-Type"))
+	}
+	// Concatenated content deltas should reconstruct "Hello", end with DONE.
+	if !strings.Contains(out, "Hel") || !strings.Contains(out, "lo") {
+		t.Fatalf("missing content deltas: %s", out)
+	}
+	if !strings.Contains(out, "[DONE]") {
+		t.Fatalf("missing DONE sentinel: %s", out)
+	}
+	if !strings.Contains(out, "chat.completion.chunk") {
+		t.Fatalf("missing chunk object: %s", out)
+	}
+}
+
 func TestChatRedactsPII(t *testing.T) {
 	var received string
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

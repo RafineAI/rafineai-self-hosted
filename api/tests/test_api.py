@@ -173,6 +173,56 @@ async def test_change_password_flow_clears_force_flag(client):
     assert r.status_code == 401
 
 
+async def test_chat_stream_persists_assembled_message(client, monkeypatch):
+    owner_token = await login(client, *OWNER)
+    r = await client.post("/api/providers", headers=auth(owner_token), json={
+        "name": "OpenAI", "type": "openai", "auth_mode": "api_key",
+        "api_key": "sk", "default_model": "gpt-4o",
+    })
+    provider_id = r.json()["id"]
+    r = await client.post("/api/conversations", headers=auth(owner_token),
+                          json={"provider_id": provider_id, "title": "S"})
+    convo_id = r.json()["id"]
+
+    import app.routers.conversations as conv_mod
+
+    class FakeStreamResp:
+        status_code = 200
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        async def aiter_lines(self):
+            for line in [
+                'data: {"choices":[{"delta":{"role":"assistant"}}]}',
+                'data: {"choices":[{"delta":{"content":"Hel"}}]}',
+                'data: {"choices":[{"delta":{"content":"lo"}}]}',
+                'data: {"choices":[],"usage":{"completion_tokens":2}}',
+                'data: [DONE]',
+            ]:
+                yield line
+
+    class FakeStreamClient:
+        def __init__(self, *a, **k): pass
+        async def __aenter__(self): return self
+        async def __aexit__(self, *a): return False
+        def stream(self, *a, **k): return FakeStreamResp()
+
+    monkeypatch.setattr(conv_mod.httpx, "AsyncClient", FakeStreamClient)
+
+    body = ""
+    async with client.stream("POST", f"/api/conversations/{convo_id}/chat/stream",
+                             headers=auth(owner_token), json={"content": "hi"}) as resp:
+        assert resp.status_code == 200
+        async for line in resp.aiter_lines():
+            body += line
+    assert "Hel" in body and "lo" in body and "[DONE]" in body
+
+    msgs = (await client.get(f"/api/conversations/{convo_id}/messages",
+                             headers=auth(owner_token))).json()
+    assert [m["role"] for m in msgs] == ["user", "assistant"]
+    assert msgs[1]["content"] == "Hello"
+    assert msgs[1]["tokens"] == 2
+
+
 async def test_audit_requires_admin(client):
     owner_token = await login(client, *OWNER)
     await client.post("/api/users", headers=auth(owner_token),
