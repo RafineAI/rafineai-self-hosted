@@ -9,6 +9,8 @@ export default function UsersPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState("user");
+  const [rpm, setRpm] = useState("");
+  const [daily, setDaily] = useState("");
   const [error, setError] = useState("");
   const [created, setCreated] = useState<UserCreateResult | null>(null);
 
@@ -27,12 +29,20 @@ export default function UsersPage() {
       const res = await api<UserCreateResult>("/api/users", {
         method: "POST",
         // Omit password to let the system generate a temporary one.
-        body: JSON.stringify({ email, role, ...(password ? { password } : {}) }),
+        body: JSON.stringify({
+          email,
+          role,
+          ...(password ? { password } : {}),
+          ...(rpm ? { rate_limit_rpm: parseInt(rpm, 10) } : {}),
+          ...(daily ? { daily_token_quota: parseInt(daily, 10) } : {}),
+        }),
       });
       if (res.generated_password) setCreated(res);
       setEmail("");
       setPassword("");
       setRole("user");
+      setRpm("");
+      setDaily("");
       await refresh();
     } catch (e: any) {
       setError(e.message);
@@ -85,6 +95,25 @@ export default function UsersPage() {
             <option value="admin">admin</option>
           </select>
         </div>
+        <details className="w-full rounded-md border border-slate-200 p-3">
+          <summary className="cursor-pointer text-sm font-medium text-slate-700">
+            Rate limits (optional)
+          </summary>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <div>
+              <label className="mb-1 block text-sm font-medium">Requests / min</label>
+              <input className="input" type="number" min={0} placeholder="default"
+                value={rpm} onChange={(e) => setRpm(e.target.value)} />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium">Daily token quota</label>
+              <input className="input" type="number" min={0} placeholder="default"
+                value={daily} onChange={(e) => setDaily(e.target.value)} />
+            </div>
+          </div>
+          <p className="mt-2 text-xs text-slate-500">Blank = gateway default · 0 = unlimited.</p>
+        </details>
+
         <button className="btn" type="submit">
           Add user
         </button>
@@ -114,6 +143,7 @@ export default function UsersPage() {
               <th className="px-4 py-3">Email</th>
               <th className="px-4 py-3">Role</th>
               <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Limits (rpm / daily)</th>
               <th className="px-4 py-3 text-right">Actions</th>
             </tr>
           </thead>
@@ -126,6 +156,9 @@ export default function UsersPage() {
                   <span className={u.is_active ? "text-green-600" : "text-slate-400"}>
                     {u.is_active ? "active" : "disabled"}
                   </span>
+                </td>
+                <td className="px-4 py-3 text-slate-500">
+                  {u.rate_limit_rpm ?? "—"} / {u.daily_token_quota ?? "—"}
                 </td>
                 <td className="px-4 py-3 text-right">
                   {u.role !== "owner" && (

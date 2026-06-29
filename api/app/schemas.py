@@ -28,16 +28,21 @@ class RefreshRequest(BaseModel):
 # ---- Users ----
 class UserCreate(BaseModel):
     email: str = Field(pattern=_EMAIL)
-    # Optional: when omitted the system generates a temporary password and
-    # (if SMTP is configured) emails it to the user.
+    # Optional: when omitted the system generates a temporary password the user
+    # must change on first sign-in (returned to the admin to relay).
     password: str | None = Field(default=None, min_length=8)
     role: str = Field(default="user", pattern="^(admin|user)$")
+    # Optional per-user limits (null = use gateway default; 0 = unlimited).
+    rate_limit_rpm: int | None = Field(default=None, ge=0)
+    daily_token_quota: int | None = Field(default=None, ge=0)
 
 
 class UserUpdate(BaseModel):
     password: str | None = Field(default=None, min_length=8)
     role: str | None = Field(default=None, pattern="^(admin|user)$")
     is_active: bool | None = None
+    rate_limit_rpm: int | None = Field(default=None, ge=0)
+    daily_token_quota: int | None = Field(default=None, ge=0)
 
 
 class UserOut(BaseModel):
@@ -46,6 +51,8 @@ class UserOut(BaseModel):
     role: str
     is_active: bool
     must_change_password: bool = False
+    rate_limit_rpm: int | None = None
+    daily_token_quota: int | None = None
 
 
 class UserCreateResult(UserOut):

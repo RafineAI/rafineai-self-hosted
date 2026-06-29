@@ -34,6 +34,14 @@ blocklist) swapped atomically via `atomic.Pointer`. Hot-path reads never lock.
 in `cmd/gateway/main.go` refreshes it on an interval. If the DB is unreachable,
 the previous snapshot keeps serving.
 
+## Rate limiting & quotas
+
+`internal/ratelimit` enforces per-user **requests/minute** and **daily token
+quota** with in-RAM counters (0 = unlimited). Per-user overrides sync from the
+`users` table into the snapshot; otherwise `GATEWAY_DEFAULT_RPM` /
+`GATEWAY_DEFAULT_DAILY_TOKENS` apply. Exceeding a limit returns `429` and is
+recorded in the audit log.
+
 ## Content policy
 
 `internal/policy` redacts obvious PII (Turkish national ID, credit-card-like

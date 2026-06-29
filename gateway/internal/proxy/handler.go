@@ -14,26 +14,46 @@ import (
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/audit"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/policy"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/provider"
+	"github.com/rafineai/rafineai-self-hosted/gateway/internal/ratelimit"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/signing"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/state"
 )
 
 // Handler holds the dependencies for the chat endpoint.
 type Handler struct {
-	MasterKey string
-	State     *state.Store
-	Audit     *audit.Writer
-	Client    *http.Client
+	MasterKey     string
+	State         *state.Store
+	Audit         *audit.Writer
+	Client        *http.Client
+	Limiter       *ratelimit.Limiter
+	DefaultLimits ratelimit.Limits
 }
 
-// New builds a Handler with a sane default HTTP client.
-func New(masterKey string, st *state.Store, aw *audit.Writer) *Handler {
+// New builds a Handler with a sane default HTTP client and rate limiter.
+func New(masterKey string, st *state.Store, aw *audit.Writer, defaults ratelimit.Limits) *Handler {
 	return &Handler{
-		MasterKey: masterKey,
-		State:     st,
-		Audit:     aw,
-		Client:    &http.Client{Timeout: 120 * time.Second},
+		MasterKey:     masterKey,
+		State:         st,
+		Audit:         aw,
+		Client:        &http.Client{Timeout: 120 * time.Second},
+		Limiter:       ratelimit.New(),
+		DefaultLimits: defaults,
 	}
+}
+
+// limitsFor resolves a user's effective limits, applying per-user overrides on
+// top of the gateway defaults.
+func (h *Handler) limitsFor(snap *state.Snapshot, userID string) ratelimit.Limits {
+	lim := h.DefaultLimits
+	if ul, ok := snap.UserLimitFor(userID); ok {
+		if ul.RPM >= 0 {
+			lim.RPM = ul.RPM
+		}
+		if ul.DailyTokens >= 0 {
+			lim.DailyTokens = ul.DailyTokens
+		}
+	}
+	return lim
 }
 
 // claimsFromRequest verifies the bearer token and returns the claims.
@@ -93,6 +113,13 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 			"provider has no usable credential")
 	}
 
+	// Rate / quota enforcement (per user, in RAM).
+	if ok, reason := h.Limiter.Allow(claims.UserID, h.limitsFor(snap, claims.UserID)); !ok {
+		h.audit(claims, p, firstNonEmpty(req.Model, p.DefaultModel), 0, 0,
+			http.StatusTooManyRequests, map[string]struct{}{}, c, reason, start)
+		return jsonError(c, http.StatusTooManyRequests, reason, "rate limit or quota exceeded")
+	}
+
 	// Pre-flight policy: redact PII in outgoing content.
 	appliedSet := map[string]struct{}{}
 	for i, m := range req.Messages {
@@ -146,6 +173,7 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 		return jsonError(c, http.StatusBadGateway, "parse_error", err.Error())
 	}
 
+	h.Limiter.AddTokens(claims.UserID, parsed.PromptTokens+parsed.CompletionTokens)
 	h.audit(claims, p, firstNonEmpty(req.Model, p.DefaultModel),
 		parsed.PromptTokens, parsed.CompletionTokens, http.StatusOK, appliedSet, c, "", start)
 
@@ -241,6 +269,7 @@ func (h *Handler) streamChat(c echo.Context, adapter provider.Adapter, p state.P
 		status = http.StatusBadGateway
 		errMsg = decErr.Error()
 	}
+	h.Limiter.AddTokens(claims.UserID, usage.PromptTokens+usage.CompletionTokens)
 	h.audit(claims, p, model, usage.PromptTokens, usage.CompletionTokens, status, appliedSet, c, errMsg, start)
 	return nil
 }

@@ -26,6 +26,13 @@ type Provider struct {
 	RouteThreshold int
 }
 
+// UserLimit holds a user's rate/quota caps. A negative value means "unset"
+// (fall back to the gateway default); 0 means unlimited.
+type UserLimit struct {
+	RPM         int
+	DailyTokens int
+}
+
 // Snapshot is an immutable, point-in-time view of all gateway state.
 type Snapshot struct {
 	Providers map[string]Provider // by provider id
@@ -33,6 +40,14 @@ type Snapshot struct {
 	UserTokens map[string]string
 	// Blocked is the set of revoked key ids (kid).
 	Blocked map[string]struct{}
+	// UserLimits holds per-user rate/quota overrides by user id.
+	UserLimits map[string]UserLimit
+}
+
+// UserLimitFor returns the user's limit override and whether one exists.
+func (s *Snapshot) UserLimitFor(userID string) (UserLimit, bool) {
+	l, ok := s.UserLimits[userID]
+	return l, ok
 }
 
 // Store wraps an atomic pointer to the current Snapshot.
@@ -83,5 +98,6 @@ func emptySnapshot() *Snapshot {
 		Providers:  map[string]Provider{},
 		UserTokens: map[string]string{},
 		Blocked:    map[string]struct{}{},
+		UserLimits: map[string]UserLimit{},
 	}
 }

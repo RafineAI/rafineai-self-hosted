@@ -10,7 +10,8 @@ from ..schemas import UserCreate, UserCreateResult, UserOut, UserUpdate
 
 router = APIRouter(prefix="/api/users", tags=["users"])
 
-_USER_COLS = "id::text AS id, email, role, is_active, must_change_password"
+_USER_COLS = ("id::text AS id, email, role, is_active, must_change_password, "
+              "rate_limit_rpm, daily_token_quota")
 
 
 @router.get("", response_model=list[UserOut])
@@ -33,14 +34,17 @@ async def create_user(body: UserCreate, _: CurrentUser = Depends(require_admin))
     try:
         row = await db.pool().fetchrow(
             f"""
-            INSERT INTO users (email, password_hash, role, must_change_password)
-            VALUES ($1, $2, $3, $4)
+            INSERT INTO users (email, password_hash, role, must_change_password,
+                               rate_limit_rpm, daily_token_quota)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING {_USER_COLS}
             """,
             body.email,
             security.hash_password(password),
             body.role,
             must_change,
+            body.rate_limit_rpm,
+            body.daily_token_quota,
         )
     except asyncpg.UniqueViolationError:
         raise HTTPException(status.HTTP_409_CONFLICT, "email already exists")
@@ -71,13 +75,19 @@ async def update_user(
     if body.is_active is not None:
         args.append(body.is_active)
         sets.append(f"is_active = ${len(args)}")
+    if body.rate_limit_rpm is not None:
+        args.append(body.rate_limit_rpm)
+        sets.append(f"rate_limit_rpm = ${len(args)}")
+    if body.daily_token_quota is not None:
+        args.append(body.daily_token_quota)
+        sets.append(f"daily_token_quota = ${len(args)}")
     if not sets:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "no fields to update")
 
     args.append(user_id)
     row = await db.pool().fetchrow(
         f"UPDATE users SET {', '.join(sets)}, updated_at = now() "
-        f"WHERE id = ${len(args)} RETURNING id::text AS id, email, role, is_active",
+        f"WHERE id = ${len(args)} RETURNING {_USER_COLS}",
         *args,
     )
     return UserOut(**dict(row))

@@ -52,6 +52,7 @@ func (s *Store) LoadSnapshot(ctx context.Context) (*state.Snapshot, error) {
 		Providers:  map[string]state.Provider{},
 		UserTokens: map[string]string{},
 		Blocked:    map[string]struct{}{},
+		UserLimits: map[string]state.UserLimit{},
 	}
 
 	// Providers.
@@ -118,6 +119,35 @@ func (s *Store) LoadSnapshot(ctx context.Context) (*state.Snapshot, error) {
 	}
 	trows.Close()
 	if err := trows.Err(); err != nil {
+		return nil, err
+	}
+
+	// Per-user rate/quota overrides (only rows that set at least one limit).
+	lrows, err := s.pool.Query(ctx, `
+		SELECT id::text, rate_limit_rpm, daily_token_quota
+		FROM users
+		WHERE rate_limit_rpm IS NOT NULL OR daily_token_quota IS NOT NULL`)
+	if err != nil {
+		return nil, err
+	}
+	for lrows.Next() {
+		var uid string
+		var rpm, daily *int
+		if err := lrows.Scan(&uid, &rpm, &daily); err != nil {
+			lrows.Close()
+			return nil, err
+		}
+		ul := state.UserLimit{RPM: -1, DailyTokens: -1}
+		if rpm != nil {
+			ul.RPM = *rpm
+		}
+		if daily != nil {
+			ul.DailyTokens = *daily
+		}
+		snap.UserLimits[uid] = ul
+	}
+	lrows.Close()
+	if err := lrows.Err(); err != nil {
 		return nil, err
 	}
 

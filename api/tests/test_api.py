@@ -238,6 +238,24 @@ async def test_chat_stream_persists_assembled_message(client, monkeypatch):
     assert msgs[1]["tokens"] == 2
 
 
+async def test_user_rate_limit_fields(client):
+    owner_token = await login(client, *OWNER)
+    r = await client.post("/api/users", headers=auth(owner_token), json={
+        "email": "limited@x.com", "role": "user",
+        "rate_limit_rpm": 30, "daily_token_quota": 100000,
+    })
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["rate_limit_rpm"] == 30
+    assert body["daily_token_quota"] == 100000
+
+    # Update clears/changes the limit.
+    r = await client.patch(f"/api/users/{body['id']}", headers=auth(owner_token),
+                           json={"rate_limit_rpm": 0})
+    assert r.status_code == 200
+    assert r.json()["rate_limit_rpm"] == 0
+
+
 async def test_audit_requires_admin(client):
     owner_token = await login(client, *OWNER)
     await client.post("/api/users", headers=auth(owner_token),

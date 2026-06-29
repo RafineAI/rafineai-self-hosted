@@ -21,6 +21,7 @@ import (
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/audit"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/config"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/proxy"
+	"github.com/rafineai/rafineai-self-hosted/gateway/internal/ratelimit"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/state"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/store"
 )
@@ -74,7 +75,10 @@ func main() {
 	e.HideBanner = true
 	e.Use(middleware.Recover())
 
-	h := proxy.New(cfg.MasterKey, st, auditWriter)
+	h := proxy.New(cfg.MasterKey, st, auditWriter, ratelimit.Limits{
+		RPM:         cfg.DefaultRPM,
+		DailyTokens: cfg.DefaultDailyTokens,
+	})
 	e.GET("/healthz", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})

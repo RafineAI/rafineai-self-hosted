@@ -12,6 +12,7 @@ import (
 	"github.com/labstack/echo/v4"
 
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/audit"
+	"github.com/rafineai/rafineai-self-hosted/gateway/internal/ratelimit"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/signing"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/state"
 )
@@ -26,7 +27,7 @@ func newTestHandler(p state.Provider) (*Handler, *audit.Writer) {
 		Blocked:    map[string]struct{}{},
 	})
 	aw := audit.New(func(context.Context, []audit.Entry) error { return nil }, 10, time.Hour)
-	h := New(masterKey, st, aw)
+	h := New(masterKey, st, aw, ratelimit.Limits{})
 	return h, aw
 }
 
@@ -137,6 +138,31 @@ func TestChatStreaming(t *testing.T) {
 	}
 	if !strings.Contains(out, "chat.completion.chunk") {
 		t.Fatalf("missing chunk object: %s", out)
+	}
+}
+
+func TestChatRateLimited(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}],"usage":{}}`))
+	}))
+	defer upstream.Close()
+
+	p := state.Provider{ID: "p1", Type: "openai", AuthMode: "api_key",
+		APIKey: "sk", BaseURL: upstream.URL, DefaultModel: "gpt-4o", Active: true}
+	h, _ := newTestHandler(p)
+	// Cap this user at 1 request/min via a per-user override.
+	snap := h.State.Current()
+	snap.UserLimits = map[string]state.UserLimit{"u1": {RPM: 1, DailyTokens: -1}}
+	h.State.Replace(snap)
+
+	key, _ := signing.Sign(masterKey, signing.Claims{UserID: "u1", KeyID: "k1", ProviderID: "p1"})
+	body := `{"messages":[{"role":"user","content":"hi"}]}`
+
+	if rec := doRequest(t, h, key, body); rec.Code != http.StatusOK {
+		t.Fatalf("first request should pass, got %d", rec.Code)
+	}
+	if rec := doRequest(t, h, key, body); rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("second request should be 429, got %d", rec.Code)
 	}
 }
 

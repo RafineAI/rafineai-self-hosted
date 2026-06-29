@@ -4,6 +4,8 @@ export interface User {
   role: string;
   is_active: boolean;
   must_change_password?: boolean;
+  rate_limit_rpm?: number | null;
+  daily_token_quota?: number | null;
 }
 
 export interface UserCreateResult extends User {
