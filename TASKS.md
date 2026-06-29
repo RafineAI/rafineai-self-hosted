@@ -54,10 +54,15 @@ Bu dosya projenin görev listesidir (kaynak doğruluk). Durum: `[ ]` bekliyor, `
   (Python imzalı key → Go doğrulama → upstream → PII redaction → audit) gerçek
   servislerle doğrulandı.
 
-## Phase 2 (MVP dışı, dokümante edildi)
-- Streaming yanıtlar (şu an non-streaming)
-- Smart routing (maliyet bazlı model seçimi)
-- Gelişmiş policy kuralları (deny/route, özelleştirilebilir regex)
-- Rate limiting / kota
+## Phase 2
+- [x] **P2-A** `scripts/gen-env.sh` — .env secret/password alanlarını otomatik doldurur
+- [x] **P2-B** Streaming yanıtlar (OpenAI/Anthropic/Gemini SSE → OpenAI formatı; uçtan uca)
+- [x] **P2-C** Smart routing (prompt boyutuna göre light/heavy model seçimi)
+- [x] **P2-D** Rate limiting / kota (per-user istek/dk + günlük token; gateway RAM sayaçları)
+- [x] **P2-E** Panel UX cilalama (streaming chat, ikonlu navigasyon, tutarlı tasarım)
+
+## Phase 3 (gelecek)
+- Gelişmiş policy kuralları (deny/route, panelden özelleştirilebilir regex)
 - LDAP / SSO
 - Ollama (lokal model) adapteri
+- Verified (imzalı) commit'ler

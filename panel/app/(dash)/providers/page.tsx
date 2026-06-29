@@ -88,7 +88,7 @@ export default function ProvidersPage() {
 
   return (
     <div className="h-screen overflow-y-auto p-8">
-      <h1 className="mb-6 text-2xl font-bold">LLM Providers</h1>
+      <h1 className="page-title mb-6">LLM Providers</h1>
 
       <form onSubmit={create} className="card mb-8 space-y-4 p-5">
         <div className="grid grid-cols-2 gap-4">

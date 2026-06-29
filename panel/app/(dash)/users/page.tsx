@@ -69,7 +69,7 @@ export default function UsersPage() {
 
   return (
     <div className="h-screen overflow-y-auto p-8">
-      <h1 className="mb-6 text-2xl font-bold">User Management</h1>
+      <h1 className="page-title mb-6">User Management</h1>
 
       <form onSubmit={create} className="card mb-8 flex flex-wrap items-end gap-3 p-4">
         <div className="flex-1">
