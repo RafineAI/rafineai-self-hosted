@@ -20,7 +20,13 @@ export default function ChatPage() {
     api<Provider[]>("/api/providers")
       .then((ps) => {
         setProviders(ps);
-        const usable = ps.find((p) => p.is_active && (p.auth_mode !== "oauth2" || p.connected));
+        const usable = ps.find(
+          (p) =>
+            p.is_active &&
+            (p.own_key ||
+              (p.auth_mode === "api_key" && p.has_api_key) ||
+              (p.auth_mode === "oauth2" && p.connected)),
+        );
         if (usable) setSelectedProvider(usable.id);
       })
       .catch(() => {});
@@ -48,7 +54,11 @@ export default function ChatPage() {
   }
 
   const usableProviders = providers.filter(
-    (p) => p.is_active && (p.auth_mode !== "oauth2" || p.connected),
+    (p) =>
+      p.is_active &&
+      (p.own_key ||
+        (p.auth_mode === "api_key" && p.has_api_key) ||
+        (p.auth_mode === "oauth2" && p.connected)),
   );
   const activeConvo = conversations.find((c) => c.id === activeId) ?? null;
 

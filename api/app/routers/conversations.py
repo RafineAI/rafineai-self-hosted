@@ -192,6 +192,10 @@ async def chat_stream(
     async def event_stream():
         collected: list[str] = []
         completion_tokens = 0
+
+        def _err_chunk(msg: str) -> str:
+            return f"data: {json.dumps({'choices':[{'delta':{'content': msg}}]})}\n\n"
+
         try:
             async with httpx.AsyncClient(timeout=120) as client:
                 async with client.stream(
@@ -208,18 +212,19 @@ async def chat_stream(
                         await resp.aread()
                         detail = resp.text
                         msg = "Sağlayıcı hazır değil (yapılandırma eşitleniyor olabilir)."
-                        if "oauth_required" in detail:
-                            msg = "Bu sağlayıcıyı önce Bağlantılarım'dan bağlamalısınız."
+                        if "oauth_required" in detail or "missing_credential" in detail:
+                            msg = "API anahtarı eksik. Bağlantılarım sayfasından kendi anahtarınızı ekleyin."
                         elif "rate_limit" in detail or "quota" in detail:
                             msg = "İstek/kota limitine ulaşıldı."
-                        yield f"data: {json.dumps({'choices':[{'delta':{'content':msg}}]})}\n\n"
+                        elif "policy_blocked" in detail:
+                            msg = "Mesajınız içerik politikası tarafından engellendi."
+                        yield _err_chunk(msg)
                         yield "data: [DONE]\n\n"
                         return
                     async for line in resp.aiter_lines():
                         if not line.startswith("data:"):
                             continue
                         payload = line[len("data:"):].strip()
-                        # Forward the chunk verbatim to the client.
                         yield f"data: {payload}\n\n"
                         if payload == "[DONE]":
                             break
@@ -233,8 +238,18 @@ async def chat_stream(
                                 collected.append(piece)
                         if chunk.get("usage"):
                             completion_tokens = chunk["usage"].get("completion_tokens", 0)
+        except httpx.ConnectError:
+            yield _err_chunk(
+                "⚠️ Gateway'e bağlanılamadı. Servis başlatılıyor olabilir, lütfen birkaç saniye bekleyin."
+            )
+            yield "data: [DONE]\n\n"
+        except httpx.TimeoutException:
+            yield _err_chunk("⚠️ Gateway zaman aşımına uğradı.")
+            yield "data: [DONE]\n\n"
+        except Exception as exc:  # noqa: BLE001
+            yield _err_chunk(f"⚠️ Beklenmeyen hata: {type(exc).__name__}")
+            yield "data: [DONE]\n\n"
         finally:
-            # Persist whatever assistant content we received, even on disconnect.
             content = "".join(collected)
             if content:
                 await db.pool().execute(
@@ -247,4 +262,8 @@ async def chat_stream(
                     conversation_id,
                 )
 
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
+    )

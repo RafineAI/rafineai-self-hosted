@@ -109,8 +109,9 @@ class ProviderOut(BaseModel):
     light_model: str | None = None
     heavy_model: str | None = None
     route_threshold_tokens: int = 2000
-    # For the current user: whether they've connected (oauth2 providers).
+    # For the current user: whether they've connected (oauth2) or added own key.
     connected: bool = False
+    own_key: bool = False
 
 
 # ---- Conversations / messages ----
@@ -183,3 +184,15 @@ class ChatRequest(BaseModel):
 class ChatReply(BaseModel):
     message: MessageOut
     applied_policies: list[str] = []
+
+
+# ---- User own keys (BYOK) ----
+class OwnKeyCreate(BaseModel):
+    api_key: str = Field(min_length=1)
+    label: str = ""
+
+
+class OwnKeyOut(BaseModel):
+    provider_type: str
+    label: str
+    created_at: str

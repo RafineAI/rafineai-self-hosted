@@ -42,6 +42,8 @@ type Snapshot struct {
 	Providers map[string]Provider // by provider id
 	// UserTokens holds decrypted OAuth access tokens keyed by "userID:providerID".
 	UserTokens map[string]string
+	// UserOwnKeys holds user-supplied BYOK credentials keyed by "userID:providerType".
+	UserOwnKeys map[string]string
 	// Blocked is the set of revoked key ids (kid).
 	Blocked map[string]struct{}
 	// UserLimits holds per-user rate/quota overrides by user id.
@@ -94,6 +96,12 @@ func (s *Snapshot) UserToken(userID, providerID string) (string, bool) {
 	return t, ok
 }
 
+// UserOwnKey returns the user's own BYOK API key for a given provider type.
+func (s *Snapshot) UserOwnKey(userID, provType string) (string, bool) {
+	k, ok := s.UserOwnKeys[userID+":"+provType]
+	return k, ok
+}
+
 // IsBlocked reports whether a key id has been revoked.
 func (s *Snapshot) IsBlocked(kid string) bool {
 	_, ok := s.Blocked[kid]
@@ -102,9 +110,10 @@ func (s *Snapshot) IsBlocked(kid string) bool {
 
 func emptySnapshot() *Snapshot {
 	return &Snapshot{
-		Providers:  map[string]Provider{},
-		UserTokens: map[string]string{},
-		Blocked:    map[string]struct{}{},
-		UserLimits: map[string]UserLimit{},
+		Providers:   map[string]Provider{},
+		UserTokens:  map[string]string{},
+		UserOwnKeys: map[string]string{},
+		Blocked:     map[string]struct{}{},
+		UserLimits:  map[string]UserLimit{},
 	}
 }

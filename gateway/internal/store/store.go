@@ -46,14 +46,37 @@ func Open(ctx context.Context, dsn, masterKey string) (*Store, error) {
 // Close releases the pool.
 func (s *Store) Close() { s.pool.Close() }
 
+// loadUserOwnKeys returns decrypted BYOK keys keyed by "userID:providerType".
+// Returns an empty map (not an error) if the table doesn't exist yet.
+func (s *Store) loadUserOwnKeys(ctx context.Context) map[string]string {
+	result := map[string]string{}
+	rows, err := s.pool.Query(ctx,
+		`SELECT user_id::text, provider_type, encrypted_key FROM user_own_keys`)
+	if err != nil {
+		return result // table may not exist yet (pre-0006)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var userID, provType, encKey string
+		if rows.Scan(&userID, &provType, &encKey) != nil {
+			continue
+		}
+		if dec, derr := secretbox.Decrypt(s.masterKey, encKey); derr == nil {
+			result[userID+":"+provType] = dec
+		}
+	}
+	return result
+}
+
 // LoadSnapshot builds a fresh in-RAM view from the database, decrypting
 // provider credentials and OAuth tokens with the master key.
 func (s *Store) LoadSnapshot(ctx context.Context) (*state.Snapshot, error) {
 	snap := &state.Snapshot{
-		Providers:  map[string]state.Provider{},
-		UserTokens: map[string]string{},
-		Blocked:    map[string]struct{}{},
-		UserLimits: map[string]state.UserLimit{},
+		Providers:   map[string]state.Provider{},
+		UserTokens:  map[string]string{},
+		UserOwnKeys: s.loadUserOwnKeys(ctx),
+		Blocked:     map[string]struct{}{},
+		UserLimits:  map[string]state.UserLimit{},
 	}
 
 	// Providers.

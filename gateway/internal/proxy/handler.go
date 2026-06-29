@@ -111,17 +111,22 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 		return jsonError(c, http.StatusForbidden, "provider_disabled", "provider is disabled")
 	}
 
-	// Credential resolution.
+	// Credential resolution: shared key → oauth2 token → user's own BYOK key.
 	credential := p.APIKey
 	if p.AuthMode == "oauth2" {
-		tok, found := snap.UserToken(claims.UserID, p.ID)
-		if !found || tok == "" {
+		if tok, found := snap.UserToken(claims.UserID, p.ID); found && tok != "" {
+			credential = tok
+		}
+	}
+	// BYOK: user's own API key always takes highest priority.
+	if ownKey, ok := snap.UserOwnKey(claims.UserID, p.Type); ok && ownKey != "" {
+		credential = ownKey
+	}
+	if credential == "" {
+		if p.AuthMode == "oauth2" {
 			return jsonError(c, http.StatusPreconditionRequired, "oauth_required",
 				"user has not connected this provider")
 		}
-		credential = tok
-	}
-	if credential == "" {
 		return jsonError(c, http.StatusFailedDependency, "missing_credential",
 			"provider has no usable credential")
 	}
