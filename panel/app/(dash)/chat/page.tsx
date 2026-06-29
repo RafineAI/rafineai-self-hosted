@@ -22,10 +22,11 @@ export default function ChatPage() {
         setProviders(ps);
         const usable = ps.find(
           (p) =>
-            p.is_active &&
-            (p.own_key ||
+            p.own_key ||
+            (p.is_active && (
               (p.auth_mode === "api_key" && p.has_api_key) ||
-              (p.auth_mode === "oauth2" && p.connected)),
+              (p.auth_mode === "oauth2" && p.connected)
+            )),
         );
         if (usable) setSelectedProvider(usable.id);
       })
@@ -55,10 +56,11 @@ export default function ChatPage() {
 
   const usableProviders = providers.filter(
     (p) =>
-      p.is_active &&
-      (p.own_key ||
+      p.own_key ||  // user's own key activates any provider regardless of shared key
+      (p.is_active && (
         (p.auth_mode === "api_key" && p.has_api_key) ||
-        (p.auth_mode === "oauth2" && p.connected)),
+        (p.auth_mode === "oauth2" && p.connected)
+      )),
   );
   const activeConvo = conversations.find((c) => c.id === activeId) ?? null;
 

@@ -211,13 +211,23 @@ async def chat_stream(
                     if resp.status_code >= 400:
                         await resp.aread()
                         detail = resp.text
-                        msg = "Sağlayıcı hazır değil (yapılandırma eşitleniyor olabilir)."
+                        dl = detail.lower()
                         if "oauth_required" in detail or "missing_credential" in detail:
-                            msg = "API anahtarı eksik. Bağlantılarım sayfasından kendi anahtarınızı ekleyin."
-                        elif "rate_limit" in detail or "quota" in detail:
-                            msg = "İstek/kota limitine ulaşıldı."
+                            msg = "⚠️ API anahtarı bulunamadı. Bağlantılarım sayfasından kendi anahtarınızı ekleyin."
+                        elif "unknown_provider" in detail:
+                            msg = "⚠️ Sağlayıcı konfigürasyonu bulunamadı. Gateway henüz senkronize olmamış olabilir (10 sn bekleyin)."
+                        elif "provider_disabled" in detail:
+                            msg = "⚠️ Bu sağlayıcı devre dışı bırakılmış. Yöneticinize danışın."
+                        elif "invalid_api_key" in detail or "api_key_invalid" in dl or ("invalid" in dl and "key" in dl):
+                            msg = "⚠️ API anahtarı geçersiz veya süresi dolmuş. Bağlantılarım'dan anahtarınızı güncelleyin."
+                        elif "rate_limit" in dl or "quota" in dl or "rate limit" in dl:
+                            msg = "⚠️ İstek/kota limitine ulaşıldı."
                         elif "policy_blocked" in detail:
-                            msg = "Mesajınız içerik politikası tarafından engellendi."
+                            msg = "⚠️ Mesajınız içerik politikası tarafından engellendi."
+                        elif "upstream_error" in detail:
+                            msg = "⚠️ LLM sağlayıcısına ulaşılamadı. Lütfen daha sonra tekrar deneyin."
+                        else:
+                            msg = f"⚠️ Sağlayıcı hatası (HTTP {resp.status_code}). Lütfen yöneticinize bildirin."
                         yield _err_chunk(msg)
                         yield "data: [DONE]\n\n"
                         return

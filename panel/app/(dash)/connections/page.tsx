@@ -15,6 +15,7 @@ export default function ConnectionsPage() {
   const [ownKeys, setOwnKeys] = useState<OwnKey[]>([]);
   const [error, setError] = useState("");
   const [justConnected, setJustConnected] = useState(false);
+  const [savedNotice, setSavedNotice] = useState(false);
 
   // BYOK form state
   const [editType, setEditType] = useState<string | null>(null);
@@ -58,6 +59,8 @@ export default function ConnectionsPage() {
       setEditType(null);
       setKeyInput("");
       setLabelInput("");
+      setSavedNotice(true);
+      setTimeout(() => setSavedNotice(false), 12000);
       await refresh();
     } catch (e: any) {
       setError(e.message);
@@ -87,8 +90,13 @@ export default function ConnectionsPage() {
       </p>
 
       {justConnected && (
-        <div className="mb-6 rounded-lg border border-green-300 bg-green-50 p-3 text-sm text-green-800">
+        <div className="mb-4 rounded-lg border border-green-300 bg-green-50 p-3 text-sm text-green-800">
           ✅ Bağlantı başarıyla tamamlandı.
+        </div>
+      )}
+      {savedNotice && (
+        <div className="mb-4 rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-800">
+          ✅ Anahtar kaydedildi. Gateway senkronizasyonu ~10 saniye içinde tamamlanacak — sonrasında Chat'ten kullanabilirsiniz.
         </div>
       )}
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
