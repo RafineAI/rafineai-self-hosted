@@ -8,6 +8,7 @@ import type { User } from "@/lib/types";
 
 const NAV = [
   { href: "/chat", label: "Chat", icon: "💬", adminOnly: false },
+  { href: "/connections", label: "Bağlantılarım", icon: "🔗", adminOnly: false },
   { href: "/providers", label: "LLM Providers", icon: "🔌", adminOnly: true },
   { href: "/users", label: "Users", icon: "👥", adminOnly: true },
   { href: "/policy", label: "Policy Rules", icon: "🛡️", adminOnly: true },

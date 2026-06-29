@@ -13,4 +13,6 @@ ENV MIGRATIONS_DIR=db/migrations \
     API_PORT=8000
 EXPOSE 8000
 
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${API_PORT}"]
+# Apply migrations (idempotent) before serving so a fresh DB is always ready,
+# then start the API.
+CMD ["sh", "-c", "python -m app.migrate_cli && uvicorn app.main:app --host 0.0.0.0 --port ${API_PORT}"]

@@ -81,6 +81,29 @@ uygulanan politikalar.
 
 ---
 
-> Ekran görüntüleri `scripts/`’teki demo akışıyla üretilmiştir: gerçek gateway +
-> API + panel ayağa kaldırılır, örnek veri girilir ve Playwright/Chromium ile
-> yakalanır.
+---
+
+## 8. Kullanıcı (admin olmayan) görünümü
+
+Admin olmayan kullanıcılar yalnızca **Chat** ve **Bağlantılarım**’ı görür. Sohbet
+ekranı ChatGPT benzeridir: solda **geçmiş sohbetler**, üstte **model seçici**.
+
+![User Chat](./screenshots/08-user-chat.png)
+
+Mesaj gönderilince sohbet otomatik oluşturulup geçmişe eklenir ve yanıt
+**streaming** gelir.
+
+![User Chat — active](./screenshots/09-user-chat-active.png)
+
+### Bağlantılarım — kullanıcı kendi LLM’ini bağlar
+
+Kullanıcı, yöneticinin OAuth2 olarak tanımladığı sağlayıcılara **kendi hesabıyla**
+(ör. Google / e-posta) bağlanır. “Hazır” sağlayıcılar (yönetici anahtarı) için
+bağlanmaya gerek yoktur.
+
+![User Connections](./screenshots/10-user-connections.png)
+
+---
+
+> Ekran görüntüleri gerçek bir stack (gateway + API + panel + demo veri) ayağa
+> kaldırılıp Playwright/Chromium ile yakalanmıştır.
