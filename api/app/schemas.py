@@ -28,7 +28,9 @@ class RefreshRequest(BaseModel):
 # ---- Users ----
 class UserCreate(BaseModel):
     email: str = Field(pattern=_EMAIL)
-    password: str = Field(min_length=8)
+    # Optional: when omitted the system generates a temporary password and
+    # (if SMTP is configured) emails it to the user.
+    password: str | None = Field(default=None, min_length=8)
     role: str = Field(default="user", pattern="^(admin|user)$")
 
 
@@ -43,6 +45,18 @@ class UserOut(BaseModel):
     email: str
     role: str
     is_active: bool
+    must_change_password: bool = False
+
+
+class UserCreateResult(UserOut):
+    # The system-generated password, returned so the admin can relay it to the
+    # user. Null when the admin supplied the password explicitly.
+    generated_password: str | None = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(min_length=8)
 
 
 # ---- Providers ----

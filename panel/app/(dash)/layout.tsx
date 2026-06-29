@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import Link from "next/link";
-import { clearSession, getRole, getToken } from "@/lib/api";
+import { api, clearSession, getRole, getToken } from "@/lib/api";
+import type { User } from "@/lib/types";
 
 const NAV = [
   { href: "/chat", label: "Chat", adminOnly: false },
@@ -23,8 +24,17 @@ export default function DashLayout({ children }: { children: React.ReactNode }) 
       router.replace("/login");
       return;
     }
-    setRole(getRole());
-    setReady(true);
+    // Force a password change on first sign-in for system-generated accounts.
+    api<User>("/api/auth/me")
+      .then((me) => {
+        if (me.must_change_password) {
+          router.replace("/change-password");
+          return;
+        }
+        setRole(getRole());
+        setReady(true);
+      })
+      .catch(() => router.replace("/login"));
   }, [router]);
 
   if (!ready) return null;

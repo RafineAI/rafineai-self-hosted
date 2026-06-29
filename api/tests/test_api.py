@@ -123,6 +123,56 @@ async def test_chat_flow_persists_messages(client, monkeypatch):
     assert msgs[1]["tokens"] == 5
 
 
+async def test_create_user_without_password_generates_one(client):
+    owner_token = await login(client, *OWNER)
+    r = await client.post("/api/users", headers=auth(owner_token),
+                          json={"email": "gen@x.com", "role": "user"})
+    assert r.status_code == 201, r.text
+    body = r.json()
+    # System-generated password is returned and a change is required.
+    assert body["generated_password"] and len(body["generated_password"]) >= 12
+    assert body["must_change_password"] is True
+
+    # The generated password actually works for login.
+    await login(client, "gen@x.com", body["generated_password"])
+
+
+async def test_create_user_with_password_no_generated_and_no_forced_change(client):
+    owner_token = await login(client, *OWNER)
+    r = await client.post("/api/users", headers=auth(owner_token),
+                          json={"email": "set@x.com", "password": "adminset123", "role": "user"})
+    assert r.status_code == 201
+    body = r.json()
+    assert body["generated_password"] is None
+    assert body["must_change_password"] is False
+
+
+async def test_change_password_flow_clears_force_flag(client):
+    owner_token = await login(client, *OWNER)
+    r = await client.post("/api/users", headers=auth(owner_token),
+                          json={"email": "flow@x.com", "role": "user"})
+    temp = r.json()["generated_password"]
+
+    user_token = await login(client, "flow@x.com", temp)
+    # Wrong current password is rejected.
+    r = await client.post("/api/auth/change-password", headers=auth(user_token),
+                          json={"current_password": "nope", "new_password": "brandnew123"})
+    assert r.status_code == 400
+
+    # Correct change succeeds and clears the must-change flag.
+    r = await client.post("/api/auth/change-password", headers=auth(user_token),
+                          json={"current_password": temp, "new_password": "brandnew123"})
+    assert r.status_code == 204
+
+    me = await client.get("/api/auth/me", headers=auth(user_token))
+    assert me.json()["must_change_password"] is False
+
+    # New password works; old one no longer does.
+    await login(client, "flow@x.com", "brandnew123")
+    r = await client.post("/api/auth/login", json={"email": "flow@x.com", "password": temp})
+    assert r.status_code == 401
+
+
 async def test_audit_requires_admin(client):
     owner_token = await login(client, *OWNER)
     await client.post("/api/users", headers=auth(owner_token),
