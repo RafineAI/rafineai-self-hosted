@@ -96,7 +96,7 @@ export default function ConnectionsPage() {
       )}
       {savedNotice && (
         <div className="mb-4 rounded-lg border border-blue-300 bg-blue-50 p-3 text-sm text-blue-800">
-          ✅ Anahtar kaydedildi. Gateway senkronizasyonu ~10 saniye içinde tamamlanacak — sonrasında Chat'ten kullanabilirsiniz.
+          ✅ Anahtar kaydedildi. Gateway senkronizasyonu ~10 saniye içinde tamamlanacak — sonrasında Chat&apos;ten kullanabilirsiniz.
         </div>
       )}
       {error && <p className="mb-4 text-sm text-red-600">{error}</p>}
