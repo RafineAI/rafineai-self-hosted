@@ -19,6 +19,14 @@ async def _connected_set(user_id: str) -> set[str]:
     return {r["pid"] for r in rows}
 
 
+async def _own_key_types(user_id: str) -> set[str]:
+    rows = await db.pool().fetch(
+        "SELECT provider_type FROM user_own_keys WHERE user_id = $1",
+        user_id,
+    )
+    return {r["provider_type"] for r in rows}
+
+
 @router.get("", response_model=list[ProviderOut])
 async def list_providers(user: CurrentUser = Depends(get_current_user)):
     rows = await db.pool().fetch(
@@ -30,9 +38,14 @@ async def list_providers(user: CurrentUser = Depends(get_current_user)):
         FROM llm_providers ORDER BY created_at
         """
     )
-    connected = await _connected_set(user.id)
+    connected, own_keys = await _connected_set(user.id), await _own_key_types(user.id)
     return [
-        ProviderOut(**dict(r), connected=(r["id"] in connected)) for r in rows
+        ProviderOut(
+            **dict(r),
+            connected=(r["id"] in connected),
+            own_key=(r["type"] in own_keys),
+        )
+        for r in rows
     ]
 
 

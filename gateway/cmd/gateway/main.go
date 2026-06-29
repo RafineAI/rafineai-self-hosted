@@ -84,6 +84,7 @@ func main() {
 	// HTTP server.
 	e := echo.New()
 	e.HideBanner = true
+	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
 	h := proxy.New(cfg.MasterKey, st, auditWriter, alertWriter, ratelimit.Limits{

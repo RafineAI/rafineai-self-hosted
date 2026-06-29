@@ -25,6 +25,13 @@ export interface Provider {
   heavy_model: string | null;
   route_threshold_tokens: number;
   connected: boolean;
+  own_key: boolean;
+}
+
+export interface OwnKey {
+  provider_type: string;
+  label: string;
+  created_at: string;
 }
 
 export interface Conversation {
