@@ -1,0 +1,45 @@
+# Environment
+.env
+.env.local
+*.local
+
+# Secrets / generated
+secrets/
+*.pem
+*.key
+
+# Go
+gateway/rafineai
+gateway/bin/
+*.test
+*.out
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# Node / Next.js
+node_modules/
+panel/.next/
+panel/out/
+panel/build/
+npm-debug.log*
+yarn-error.log*
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Docker volumes (local)
+pgdata/
+
+# Logs
+*.log
