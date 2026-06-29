@@ -21,8 +21,6 @@ c_red()   { printf "\033[31m%s\033[0m\n" "$1"; }
 c_bold()  { printf "\033[1m%s\033[0m\n" "$1"; }
 die()     { c_red "✗ $1"; exit 1; }
 
-rand() { LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c "${1:-32}"; }
-
 # ---- 1. dependency checks ----
 c_bold "→ Checking prerequisites…"
 command -v docker >/dev/null 2>&1 || die "Docker is not installed."
@@ -41,35 +39,9 @@ if [ -f .env ]; then
   c_green "✓ Existing .env found — keeping current secrets."
 else
   c_bold "→ Generating secrets and writing .env…"
-  POSTGRES_PASSWORD="$(rand 24)"
-  MASTER_KEY="$(rand 48)"
-  JWT_SECRET="$(rand 48)"
-  OWNER_PASSWORD="$(rand 16)"
-
-  cat > .env <<EOF
-RAFINE_VERSION=latest
-REGISTRY=ghcr.io/rafineai
-RAFINE_PUBLIC_URL=http://localhost
-HTTP_PORT=80
-
-POSTGRES_USER=rafine
-POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-POSTGRES_DB=rafineai
-DATABASE_URL=postgres://rafine:${POSTGRES_PASSWORD}@postgres:5432/rafineai?sslmode=disable
-
-RAFINE_MASTER_KEY=${MASTER_KEY}
-JWT_SECRET=${JWT_SECRET}
-JWT_ACCESS_TTL_MIN=60
-JWT_REFRESH_TTL_DAYS=14
-
-OWNER_EMAIL=owner@rafine.local
-OWNER_PASSWORD=${OWNER_PASSWORD}
-
-GATEWAY_SYNC_INTERVAL_SEC=30
-GATEWAY_AUDIT_BATCH_SIZE=50
-GATEWAY_AUDIT_FLUSH_MS=2000
-EOF
-  c_green "✓ .env created."
+  # Delegates secret generation to scripts/gen-env.sh, which fills every
+  # password/key field from .env.example automatically.
+  ./scripts/gen-env.sh
 fi
 
 # ---- 3. start the stack ----
