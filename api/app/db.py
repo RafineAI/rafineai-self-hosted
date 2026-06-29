@@ -1,9 +1,18 @@
 """asyncpg connection pool management."""
 from __future__ import annotations
 
+import json
+
 import asyncpg
 
 _pool: asyncpg.Pool | None = None
+
+
+async def _init_conn(conn: asyncpg.Connection) -> None:
+    # Return JSONB columns as Python objects (lists/dicts) instead of raw text.
+    await conn.set_type_codec(
+        "jsonb", encoder=json.dumps, decoder=json.loads, schema="pg_catalog"
+    )
 
 
 def _normalize_dsn(dsn: str) -> str:
@@ -15,7 +24,9 @@ def _normalize_dsn(dsn: str) -> str:
 async def connect(dsn: str) -> asyncpg.Pool:
     global _pool
     if _pool is None:
-        _pool = await asyncpg.create_pool(_normalize_dsn(dsn), min_size=1, max_size=10)
+        _pool = await asyncpg.create_pool(
+            _normalize_dsn(dsn), min_size=1, max_size=10, init=_init_conn
+        )
     return _pool
 
 

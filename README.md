@@ -97,6 +97,10 @@ cp .env.example .env
 docker compose -f docker-compose.dev.yml up --build
 ```
 
+> **Distributing to customers?** See [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md)
+> for the build → registry → one-command-install model (GHCR / GCP Artifact
+> Registry), upgrades, and backups.
+
 ---
 
 ## First login
