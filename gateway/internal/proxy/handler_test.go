@@ -11,6 +11,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/rafineai/rafineai-self-hosted/gateway/internal/alert"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/audit"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/ratelimit"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/signing"
@@ -27,7 +28,8 @@ func newTestHandler(p state.Provider) (*Handler, *audit.Writer) {
 		Blocked:    map[string]struct{}{},
 	})
 	aw := audit.New(func(context.Context, []audit.Entry) error { return nil }, 10, time.Hour)
-	h := New(masterKey, st, aw, ratelimit.Limits{})
+	al := alert.New(func(context.Context, []alert.Entry) error { return nil }, time.Hour)
+	h := New(masterKey, st, aw, al, ratelimit.Limits{})
 	return h, aw
 }
 
@@ -163,6 +165,51 @@ func TestChatRateLimited(t *testing.T) {
 	}
 	if rec := doRequest(t, h, key, body); rec.Code != http.StatusTooManyRequests {
 		t.Fatalf("second request should be 429, got %d", rec.Code)
+	}
+}
+
+func TestChatMasksSecretAndAlerts(t *testing.T) {
+	var received string
+	var alerted int
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b := make([]byte, r.ContentLength)
+		r.Body.Read(b)
+		received = string(b)
+		w.Write([]byte(`{"choices":[{"message":{"content":"ok"}}],"usage":{}}`))
+	}))
+	defer upstream.Close()
+
+	st := state.New()
+	st.Replace(&state.Snapshot{Providers: map[string]state.Provider{"p1": {
+		ID: "p1", Type: "openai", AuthMode: "api_key", APIKey: "sk", BaseURL: upstream.URL,
+		DefaultModel: "gpt-4o", Active: true,
+	}}})
+	aw := audit.New(func(context.Context, []audit.Entry) error { return nil }, 10, time.Hour)
+	al := alert.New(func(_ context.Context, b []alert.Entry) error { alerted += len(b); return nil }, time.Hour)
+	h := New(masterKey, st, aw, al, ratelimit.Limits{})
+
+	key, _ := signing.Sign(masterKey, signing.Claims{UserID: "u1", KeyID: "k1", ProviderID: "p1"})
+	rec := doRequest(t, h, key, `{"messages":[{"role":"user","content":"key sk-abcdef0123456789ABCDEF here"}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status=%d", rec.Code)
+	}
+	if strings.Contains(received, "sk-abcdef0123456789ABCDEF") {
+		t.Fatalf("secret leaked upstream: %s", received)
+	}
+	if !strings.Contains(received, "[MASKED]") {
+		t.Fatalf("expected mask token upstream: %s", received)
+	}
+}
+
+func TestChatBlocksPrivateKey(t *testing.T) {
+	p := state.Provider{ID: "p1", Type: "openai", AuthMode: "api_key", APIKey: "sk",
+		DefaultModel: "gpt-4o", Active: true}
+	h, _ := newTestHandler(p)
+	key, _ := signing.Sign(masterKey, signing.Claims{UserID: "u1", KeyID: "k1", ProviderID: "p1"})
+	body := `{"messages":[{"role":"user","content":"-----BEGIN RSA PRIVATE KEY-----"}]}`
+	rec := doRequest(t, h, key, body)
+	if rec.Code != http.StatusUnprocessableEntity {
+		t.Fatalf("expected 422 policy_blocked, got %d", rec.Code)
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
+	"github.com/rafineai/rafineai-self-hosted/gateway/internal/alert"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/audit"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/policy"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/provider"
@@ -24,21 +25,33 @@ type Handler struct {
 	MasterKey     string
 	State         *state.Store
 	Audit         *audit.Writer
+	Alerts        *alert.Writer
 	Client        *http.Client
 	Limiter       *ratelimit.Limiter
 	DefaultLimits ratelimit.Limits
 }
 
 // New builds a Handler with a sane default HTTP client and rate limiter.
-func New(masterKey string, st *state.Store, aw *audit.Writer, defaults ratelimit.Limits) *Handler {
+func New(masterKey string, st *state.Store, aw *audit.Writer, al *alert.Writer, defaults ratelimit.Limits) *Handler {
 	return &Handler{
 		MasterKey:     masterKey,
 		State:         st,
 		Audit:         aw,
+		Alerts:        al,
 		Client:        &http.Client{Timeout: 120 * time.Second},
 		Limiter:       ratelimit.New(),
 		DefaultLimits: defaults,
 	}
+}
+
+// snippet returns a short, already-masked excerpt safe to store in an alert.
+func snippet(masked string) string {
+	const max = 160
+	s := strings.TrimSpace(masked)
+	if len(s) > max {
+		return s[:max] + "…"
+	}
+	return s
 }
 
 // limitsFor resolves a user's effective limits, applying per-user overrides on
@@ -120,17 +133,36 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 		return jsonError(c, http.StatusTooManyRequests, reason, "rate limit or quota exceeded")
 	}
 
-	// Pre-flight policy: redact PII in outgoing content.
+	// Pre-flight policy: built-in detectors + admin custom rules. Masking is
+	// applied only to the upstream copy (the user never sees the mask); every
+	// firing raises an admin alert; a block-action match rejects the request.
+	rules := append(policy.Builtins(), snap.Rules...)
 	appliedSet := map[string]struct{}{}
+	blocked := false
+	convID := c.Request().Header.Get("X-Rafine-Conversation")
 	for i, m := range req.Messages {
 		if m.Role == "assistant" {
 			continue
 		}
-		res := policy.Apply(m.Content)
+		res := policy.Apply(m.Content, rules)
 		req.Messages[i].Content = res.Text
-		for _, r := range res.Applied {
-			appliedSet[r] = struct{}{}
+		for _, f := range res.Findings {
+			appliedSet[f.Rule] = struct{}{}
+			h.Alerts.Enqueue(alert.Entry{
+				UserID: claims.UserID, ConversationID: convID,
+				RuleName: f.Rule, Category: f.Category, Action: f.Action,
+				Severity: f.Severity, Snippet: snippet(res.Text),
+			})
 		}
+		if res.Blocked {
+			blocked = true
+		}
+	}
+	if blocked {
+		h.audit(claims, p, firstNonEmpty(req.Model, p.DefaultModel), 0, 0,
+			http.StatusUnprocessableEntity, appliedSet, c, "blocked_by_policy", start)
+		return jsonError(c, http.StatusUnprocessableEntity, "policy_blocked",
+			"request blocked by content policy")
 	}
 
 	adapter := provider.For(p.Type)

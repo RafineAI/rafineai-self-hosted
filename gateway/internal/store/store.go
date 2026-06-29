@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/rafineai/rafineai-self-hosted/gateway/internal/policy"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/secretbox"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/state"
 )
@@ -151,6 +152,34 @@ func (s *Store) LoadSnapshot(ctx context.Context) (*state.Snapshot, error) {
 		return nil, err
 	}
 
+	// Admin-defined custom policy rules (compiled).
+	prows, err := s.pool.Query(ctx, `
+		SELECT name, category, kind, pattern, action, severity
+		FROM policy_rules WHERE enabled = TRUE`)
+	if err != nil {
+		return nil, err
+	}
+	for prows.Next() {
+		var name, category, kind, pattern, action, severity string
+		if err := prows.Scan(&name, &category, &kind, &pattern, &action, &severity); err != nil {
+			prows.Close()
+			return nil, err
+		}
+		var rule *policy.Rule
+		if kind == "keyword" {
+			rule = policy.NewKeywordRule(name, category, action, severity, pattern)
+		} else {
+			rule = policy.NewRegexRule(name, category, action, severity, pattern)
+		}
+		if rule != nil {
+			snap.Rules = append(snap.Rules, rule)
+		}
+	}
+	prows.Close()
+	if err := prows.Err(); err != nil {
+		return nil, err
+	}
+
 	// Revocation blocklist.
 	brows, err := s.pool.Query(ctx, `SELECT kid FROM gateway_keys WHERE revoked = TRUE`)
 	if err != nil {
@@ -202,6 +231,41 @@ func (s *Store) WriteAudit(ctx context.Context, entries []AuditEntry) error {
 			nullable(e.Model), e.RequestTokens, e.ResponseTokens, e.LatencyMS,
 			e.StatusCode, policiesOrEmpty(e.AppliedPolicies), nullable(e.Error),
 		)
+	}
+	br := s.pool.SendBatch(ctx, batch)
+	defer br.Close()
+	for range entries {
+		if _, err := br.Exec(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// AlertEntry is one row to be written to alerts.
+type AlertEntry struct {
+	UserID         string
+	ConversationID string
+	RuleName       string
+	Category       string
+	Action         string
+	Severity       string
+	Snippet        string
+}
+
+// WriteAlerts batch-inserts policy alerts in a single round-trip.
+func (s *Store) WriteAlerts(ctx context.Context, entries []AlertEntry) error {
+	if len(entries) == 0 {
+		return nil
+	}
+	const q = `
+		INSERT INTO alerts
+			(user_id, conversation_id, rule_name, category, action, severity, snippet)
+		VALUES ($1,$2,$3,$4,$5,$6,$7)`
+	batch := &pgx.Batch{}
+	for _, e := range entries {
+		batch.Queue(q, nullable(e.UserID), nullable(e.ConversationID),
+			e.RuleName, e.Category, e.Action, e.Severity, e.Snippet)
 	}
 	br := s.pool.SendBatch(ctx, batch)
 	defer br.Close()

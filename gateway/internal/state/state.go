@@ -6,7 +6,11 @@
 // sync worker builds a fresh Snapshot and Store()s it.
 package state
 
-import "sync/atomic"
+import (
+	"sync/atomic"
+
+	"github.com/rafineai/rafineai-self-hosted/gateway/internal/policy"
+)
 
 // Provider is the decrypted, ready-to-use view of an llm_providers row.
 type Provider struct {
@@ -42,6 +46,9 @@ type Snapshot struct {
 	Blocked map[string]struct{}
 	// UserLimits holds per-user rate/quota overrides by user id.
 	UserLimits map[string]UserLimit
+	// Rules holds compiled admin-defined custom policy rules (applied in
+	// addition to the gateway's built-in detectors).
+	Rules []*policy.Rule
 }
 
 // UserLimitFor returns the user's limit override and whether one exists.

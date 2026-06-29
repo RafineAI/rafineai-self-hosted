@@ -18,6 +18,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
+	"github.com/rafineai/rafineai-self-hosted/gateway/internal/alert"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/audit"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/config"
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/proxy"
@@ -70,12 +71,22 @@ func main() {
 	}, cfg.AuditBatchSize, cfg.AuditFlushPeriod)
 	go auditWriter.Run(rootCtx)
 
+	// Async alert writer (policy violations → admin alerts).
+	alertWriter := alert.New(func(ctx context.Context, batch []alert.Entry) error {
+		entries := make([]store.AlertEntry, len(batch))
+		for i, e := range batch {
+			entries[i] = store.AlertEntry(e)
+		}
+		return db.WriteAlerts(ctx, entries)
+	}, cfg.AuditFlushPeriod)
+	go alertWriter.Run(rootCtx)
+
 	// HTTP server.
 	e := echo.New()
 	e.HideBanner = true
 	e.Use(middleware.Recover())
 
-	h := proxy.New(cfg.MasterKey, st, auditWriter, ratelimit.Limits{
+	h := proxy.New(cfg.MasterKey, st, auditWriter, alertWriter, ratelimit.Limits{
 		RPM:         cfg.DefaultRPM,
 		DailyTokens: cfg.DefaultDailyTokens,
 	})
