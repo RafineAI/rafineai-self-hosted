@@ -24,6 +24,10 @@ and audit queries. On startup it **runs SQL migrations** and **seeds the owner**
 | POST   | `/api/conversations/{id}/chat`         | any     | Send a message (proxied to gateway) |
 | POST   | `/api/conversations/{id}/chat/stream`  | any     | Streaming chat (SSE; persists on completion) |
 | GET    | `/api/audit`                           | admin   | Query audit logs                |
+| GET    | `/api/policy/builtins`                 | admin   | Built-in detectors (read-only)  |
+| GET/POST/PATCH/DELETE | `/api/policy/rules[/{id}]`  | admin   | Manage custom policy rules      |
+| GET    | `/api/alerts`                          | admin   | Policy alerts (masked snippets) |
+| POST   | `/api/alerts/{id}/resolve`             | admin   | Mark an alert resolved          |
 
 ## Security model
 

@@ -28,8 +28,8 @@ from app.migrate import run_migrations  # noqa: E402
 from app.seed import seed_owner  # noqa: E402
 
 TABLES = [
-    "audit_logs", "messages", "conversations", "user_provider_tokens",
-    "gateway_keys", "llm_providers", "users",
+    "alerts", "policy_rules", "audit_logs", "messages", "conversations",
+    "user_provider_tokens", "gateway_keys", "llm_providers", "users",
 ]
 
 

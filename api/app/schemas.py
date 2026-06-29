@@ -134,6 +134,48 @@ class MessageOut(BaseModel):
     tokens: int
 
 
+# ---- Policy rules & alerts ----
+class PolicyRuleCreate(BaseModel):
+    name: str
+    category: str = "custom"
+    kind: str = Field(pattern="^(regex|keyword)$")
+    pattern: str
+    action: str = Field(pattern="^(mask|block|flag)$")
+    severity: str = Field(default="medium", pattern="^(low|medium|high)$")
+    enabled: bool = True
+
+
+class PolicyRuleUpdate(BaseModel):
+    pattern: str | None = None
+    action: str | None = Field(default=None, pattern="^(mask|block|flag)$")
+    severity: str | None = Field(default=None, pattern="^(low|medium|high)$")
+    enabled: bool | None = None
+
+
+class PolicyRuleOut(BaseModel):
+    id: str
+    name: str
+    category: str
+    kind: str
+    pattern: str
+    action: str
+    severity: str
+    enabled: bool
+
+
+class AlertOut(BaseModel):
+    id: str
+    user_id: str | None
+    conversation_id: str | None
+    rule_name: str
+    category: str
+    action: str
+    severity: str
+    snippet: str
+    resolved: bool
+    created_at: str
+
+
 class ChatRequest(BaseModel):
     content: str
 

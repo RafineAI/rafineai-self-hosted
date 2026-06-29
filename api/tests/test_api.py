@@ -256,6 +256,61 @@ async def test_user_rate_limit_fields(client):
     assert r.json()["rate_limit_rpm"] == 0
 
 
+async def test_policy_rule_crud(client):
+    owner_token = await login(client, *OWNER)
+    # builtins are visible
+    r = await client.get("/api/policy/builtins", headers=auth(owner_token))
+    assert r.status_code == 200 and len(r.json()) > 5
+
+    r = await client.post("/api/policy/rules", headers=auth(owner_token), json={
+        "name": "internal_codename", "category": "custom", "kind": "keyword",
+        "pattern": "ProjeAtlas", "action": "mask", "severity": "high",
+    })
+    assert r.status_code == 201, r.text
+    rule_id = r.json()["id"]
+
+    # duplicate name -> 409
+    r = await client.post("/api/policy/rules", headers=auth(owner_token), json={
+        "name": "internal_codename", "kind": "keyword", "pattern": "x", "action": "flag",
+    })
+    assert r.status_code == 409
+
+    # disable it
+    r = await client.patch(f"/api/policy/rules/{rule_id}", headers=auth(owner_token),
+                           json={"enabled": False})
+    assert r.status_code == 200 and r.json()["enabled"] is False
+
+    # non-admin cannot manage rules
+    await client.post("/api/users", headers=auth(owner_token),
+                      json={"email": "pol@x.com", "password": "password123", "role": "user"})
+    user_token = await login(client, "pol@x.com", "password123")
+    r = await client.get("/api/policy/rules", headers=auth(user_token))
+    assert r.status_code == 403
+
+    r = await client.delete(f"/api/policy/rules/{rule_id}", headers=auth(owner_token))
+    assert r.status_code == 204
+
+
+async def test_alerts_list_and_resolve(client):
+    owner_token = await login(client, *OWNER)
+    # Seed an alert directly (the gateway is what writes these in production).
+    from app import db as appdb
+    await appdb.pool().execute(
+        "INSERT INTO alerts (rule_name, category, action, severity, snippet) "
+        "VALUES ('secret_openai_key', 'secret', 'mask', 'high', 'key [MASKED] here')"
+    )
+    r = await client.get("/api/alerts", headers=auth(owner_token))
+    assert r.status_code == 200 and len(r.json()) == 1
+    alert_id = r.json()[0]["id"]
+    assert "[MASKED]" in r.json()[0]["snippet"]
+
+    r = await client.post(f"/api/alerts/{alert_id}/resolve", headers=auth(owner_token))
+    assert r.status_code == 204
+
+    r = await client.get("/api/alerts?resolved=false", headers=auth(owner_token))
+    assert len(r.json()) == 0
+
+
 async def test_audit_requires_admin(client):
     owner_token = await login(client, *OWNER)
     await client.post("/api/users", headers=auth(owner_token),
