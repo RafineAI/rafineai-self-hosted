@@ -1,0 +1,112 @@
+"""Pydantic request/response models."""
+from __future__ import annotations
+
+from pydantic import BaseModel, Field
+
+# On-prem deployments commonly use internal domains (.local, .internal, .corp)
+# that strict public-email validators reject, so we apply a light format check.
+_EMAIL = r"^[^@\s]+@[^@\s]+\.[^@\s]+$"
+
+
+# ---- Auth ----
+class LoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    refresh_token: str
+    token_type: str = "bearer"
+    role: str
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
+# ---- Users ----
+class UserCreate(BaseModel):
+    email: str = Field(pattern=_EMAIL)
+    password: str = Field(min_length=8)
+    role: str = Field(default="user", pattern="^(admin|user)$")
+
+
+class UserUpdate(BaseModel):
+    password: str | None = Field(default=None, min_length=8)
+    role: str | None = Field(default=None, pattern="^(admin|user)$")
+    is_active: bool | None = None
+
+
+class UserOut(BaseModel):
+    id: str
+    email: str
+    role: str
+    is_active: bool
+
+
+# ---- Providers ----
+class ProviderCreate(BaseModel):
+    name: str
+    type: str = Field(pattern="^(openai|anthropic|gemini)$")
+    auth_mode: str = Field(default="api_key", pattern="^(api_key|oauth2)$")
+    api_key: str | None = None
+    oauth_client_id: str | None = None
+    oauth_client_secret: str | None = None
+    oauth_auth_url: str | None = None
+    oauth_token_url: str | None = None
+    oauth_scopes: str | None = None
+    base_url: str | None = None
+    default_model: str
+    is_active: bool = True
+
+
+class ProviderUpdate(BaseModel):
+    name: str | None = None
+    api_key: str | None = None
+    base_url: str | None = None
+    default_model: str | None = None
+    is_active: bool | None = None
+
+
+class ProviderOut(BaseModel):
+    id: str
+    name: str
+    type: str
+    auth_mode: str
+    has_api_key: bool
+    base_url: str | None
+    default_model: str
+    is_active: bool
+    # For the current user: whether they've connected (oauth2 providers).
+    connected: bool = False
+
+
+# ---- Conversations / messages ----
+class ConversationCreate(BaseModel):
+    provider_id: str
+    model: str | None = None
+    title: str = "New conversation"
+
+
+class ConversationOut(BaseModel):
+    id: str
+    provider_id: str | None
+    model: str
+    title: str
+
+
+class MessageOut(BaseModel):
+    id: str
+    role: str
+    content: str
+    tokens: int
+
+
+class ChatRequest(BaseModel):
+    content: str
+
+
+class ChatReply(BaseModel):
+    message: MessageOut
+    applied_policies: list[str] = []
