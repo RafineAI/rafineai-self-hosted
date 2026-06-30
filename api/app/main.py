@@ -16,6 +16,7 @@ from . import db
 from .config import get_settings
 from .migrate import run_migrations
 from .routers import (
+    api_client,
     audit,
     auth,
     conversations,
@@ -76,6 +77,7 @@ app.include_router(teams.router)
 app.include_router(metrics.router)
 app.include_router(marketplace.router)
 app.include_router(github.router)
+app.include_router(api_client.router)
 
 
 @app.get("/healthz")
