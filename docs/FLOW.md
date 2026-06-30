@@ -105,5 +105,38 @@ bağlanmaya gerek yoktur.
 
 ---
 
+## 9. Kurumsal özellikler (Phase 4)
+
+### 9.1 Belgelerim (dosya depolama + önizleme)
+Kullanıcılar dosya yükler; resim/PDF/metin/kod panelde inline önizlenir. Dosyalar
+`storage` volume'unda (`/data/storage`) tutulur, metadata `documents` tablosunda.
+
+### 9.2 Bilgi Tabanı (RAG / NotebookLM)
+Belgeler indekslenir (pgvector embeddings), kullanıcı kendi belgelerine soru sorar.
+Yanıtın altında kullanılan **kaynak belgeler** listelenir. Yanıt yine gateway'den
+geçer; politika ve audit uygulanır.
+
+### 9.3 Takımlar
+Admin takım oluşturur, RPM/token limiti ve **izinli sağlayıcılar** atar. Bir sağlayıcı
+en az bir takıma atanınca yalnızca o takım üyeleri kullanabilir. Kişisel limit yoksa
+takım limiti (en kısıtlayıcı) uygulanır.
+
+### 9.4 Dashboard (metrikler)
+İstek/token/maliyet/gecikme/hata grafikleri. Gateway ayrıca Prometheus `/metrics`
+endpoint'i sunar (`rafine_requests_total`, `rafine_tokens_total`, `rafine_errors_total`).
+
+### 9.5 Yanıt maskeleme
+Policy sayfasındaki anahtarla, modelin **yanıtındaki** hassas veriler de maskelenir.
+Streaming yanıtta boşluk sınırında tamponlu maskeleme ile token sınırını aşan
+hassas veri sızmaz.
+
+### 9.6 Marketplace
+GitHub, Slack, Sentry, API Client (Postman benzeri + "LLM'e sor"), Swagger/OpenAPI
+ve Fine-tuning entegrasyonları. Config'ler AES-GCM ile şifreli saklanır; sırlar
+panele asla dönmez.
+
+---
+
 > Ekran görüntüleri gerçek bir stack (gateway + API + panel + demo veri) ayağa
-> kaldırılıp Playwright/Chromium ile yakalanmıştır.
+> kaldırılıp Playwright/Chromium ile yakalanmıştır. Phase 4 ekranları kod
+> tabanındadır; görseller bir sonraki demo turunda eklenecektir.
