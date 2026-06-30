@@ -51,6 +51,26 @@ export interface TeamMember {
   role_in_team: string;
 }
 
+export interface ConfigField {
+  key: string;
+  label: string;
+  secret: boolean;
+  placeholder?: string;
+  optional?: boolean;
+}
+
+export interface MarketplaceApp {
+  slug: string;
+  name: string;
+  category: string;
+  icon: string;
+  description: string;
+  config_fields: ConfigField[];
+  needs_config: boolean;
+  installed: boolean;
+  enabled: boolean;
+}
+
 export interface Document {
   id: string;
   filename: string;
