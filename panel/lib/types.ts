@@ -34,6 +34,17 @@ export interface OwnKey {
   created_at: string;
 }
 
+export interface Document {
+  id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  sha256: string;
+  indexed: boolean;
+  team_id: string | null;
+  created_at: string;
+}
+
 export interface Conversation {
   id: string;
   provider_id: string | null;

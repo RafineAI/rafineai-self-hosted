@@ -196,3 +196,15 @@ class OwnKeyOut(BaseModel):
     provider_type: str
     label: str
     created_at: str
+
+
+# ---- Documents ----
+class DocumentOut(BaseModel):
+    id: str
+    filename: str
+    mime_type: str
+    size_bytes: int
+    sha256: str
+    indexed: bool = False
+    team_id: str | None = None
+    created_at: str

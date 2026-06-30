@@ -59,7 +59,9 @@ export async function api<T = unknown>(
   const headers = new Headers(opts.headers);
   const token = getToken();
   if (token) headers.set("Authorization", `Bearer ${token}`);
-  if (opts.body && !headers.has("Content-Type")) {
+  // Don't set Content-Type for FormData — the browser sets the multipart boundary.
+  const isFormData = typeof FormData !== "undefined" && opts.body instanceof FormData;
+  if (opts.body && !isFormData && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
@@ -127,6 +129,19 @@ export async function streamChat(
       }
     }
   }
+}
+
+/**
+ * Fetch a protected binary endpoint with the auth header and return an
+ * object URL the browser can render (img/iframe src). Caller must revoke it.
+ */
+export async function authedBlobUrl(path: string): Promise<string> {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(`${BASE}${path}`, { headers });
+  if (!res.ok) throw new ApiError(res.status, "içerik yüklenemedi");
+  return URL.createObjectURL(await res.blob());
 }
 
 export async function login(email: string, password: string) {

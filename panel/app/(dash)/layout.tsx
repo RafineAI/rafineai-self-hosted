@@ -8,8 +8,12 @@ import type { User } from "@/lib/types";
 
 const NAV = [
   { href: "/chat", label: "Chat", icon: "💬", adminOnly: false },
+  { href: "/documents", label: "Belgelerim", icon: "📁", adminOnly: false },
   { href: "/connections", label: "Bağlantılarım", icon: "🔗", adminOnly: false },
+  { href: "/marketplace", label: "Marketplace", icon: "🧩", adminOnly: false },
+  { href: "/dashboard", label: "Dashboard", icon: "📊", adminOnly: true },
   { href: "/providers", label: "LLM Providers", icon: "🔌", adminOnly: true },
+  { href: "/teams", label: "Teams", icon: "🧑‍🤝‍🧑", adminOnly: true },
   { href: "/users", label: "Users", icon: "👥", adminOnly: true },
   { href: "/policy", label: "Policy Rules", icon: "🛡️", adminOnly: true },
   { href: "/alerts", label: "Alerts", icon: "🔔", adminOnly: true },

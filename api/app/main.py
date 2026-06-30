@@ -15,7 +15,17 @@ from fastapi.middleware.cors import CORSMiddleware
 from . import db
 from .config import get_settings
 from .migrate import run_migrations
-from .routers import audit, auth, conversations, oauth, policy, providers, user_keys, users
+from .routers import (
+    audit,
+    auth,
+    conversations,
+    documents,
+    oauth,
+    policy,
+    providers,
+    user_keys,
+    users,
+)
 from .seed import seed_owner
 
 log = logging.getLogger("rafineai.api")
@@ -56,6 +66,7 @@ app.include_router(audit.router)
 app.include_router(policy.router)
 app.include_router(policy.alerts_router)
 app.include_router(user_keys.router)
+app.include_router(documents.router)
 
 
 @app.get("/healthz")

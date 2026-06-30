@@ -10,7 +10,9 @@ COPY api/app ./app
 COPY db ./db
 
 ENV MIGRATIONS_DIR=db/migrations \
-    API_PORT=8000
+    API_PORT=8000 \
+    STORAGE_DIR=/data/storage
+RUN mkdir -p /data/storage
 EXPOSE 8000
 
 # Apply migrations (idempotent) before serving so a fresh DB is always ready,
