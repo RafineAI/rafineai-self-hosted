@@ -20,6 +20,7 @@ from .routers import (
     auth,
     conversations,
     documents,
+    metrics,
     oauth,
     policy,
     providers,
@@ -70,6 +71,7 @@ app.include_router(policy.settings_router)
 app.include_router(user_keys.router)
 app.include_router(documents.router)
 app.include_router(teams.router)
+app.include_router(metrics.router)
 
 
 @app.get("/healthz")

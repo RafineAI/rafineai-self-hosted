@@ -4,9 +4,11 @@ package proxy
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -29,6 +31,26 @@ type Handler struct {
 	Client        *http.Client
 	Limiter       *ratelimit.Limiter
 	DefaultLimits ratelimit.Limits
+
+	// In-process counters exposed at /metrics (Prometheus text format).
+	mRequests atomic.Int64
+	mErrors   atomic.Int64
+	mTokens   atomic.Int64
+}
+
+// Metrics renders the in-process counters in Prometheus exposition format.
+func (h *Handler) Metrics(c echo.Context) error {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# HELP rafine_requests_total Total chat requests handled.\n")
+	fmt.Fprintf(&b, "# TYPE rafine_requests_total counter\n")
+	fmt.Fprintf(&b, "rafine_requests_total %d\n", h.mRequests.Load())
+	fmt.Fprintf(&b, "# HELP rafine_errors_total Total requests that ended in an error status.\n")
+	fmt.Fprintf(&b, "# TYPE rafine_errors_total counter\n")
+	fmt.Fprintf(&b, "rafine_errors_total %d\n", h.mErrors.Load())
+	fmt.Fprintf(&b, "# HELP rafine_tokens_total Total prompt+completion tokens proxied.\n")
+	fmt.Fprintf(&b, "# TYPE rafine_tokens_total counter\n")
+	fmt.Fprintf(&b, "rafine_tokens_total %d\n", h.mTokens.Load())
+	return c.String(http.StatusOK, b.String())
 }
 
 // New builds a Handler with a sane default HTTP client and rate limiter.
@@ -364,6 +386,12 @@ func (h *Handler) streamChat(c echo.Context, adapter provider.Adapter, p state.P
 
 func (h *Handler) audit(claims signing.Claims, p state.Provider, model string,
 	promptTok, compTok, status int, appliedSet map[string]struct{}, c echo.Context, errMsg string, start time.Time) {
+
+	h.mRequests.Add(1)
+	h.mTokens.Add(int64(promptTok + compTok))
+	if status >= 400 {
+		h.mErrors.Add(1)
+	}
 
 	policies := make([]string, 0, len(appliedSet))
 	for k := range appliedSet {
