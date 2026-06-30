@@ -27,6 +27,7 @@ from .routers import (
     oauth,
     policy,
     providers,
+    slack,
     teams,
     user_keys,
     users,
@@ -78,6 +79,7 @@ app.include_router(metrics.router)
 app.include_router(marketplace.router)
 app.include_router(github.router)
 app.include_router(api_client.router)
+app.include_router(slack.router)
 
 
 @app.get("/healthz")
