@@ -28,6 +28,7 @@ from .routers import (
     oauth,
     policy,
     providers,
+    rag,
     sentry,
     slack,
     teams,
@@ -84,6 +85,7 @@ app.include_router(api_client.router)
 app.include_router(slack.router)
 app.include_router(sentry.router)
 app.include_router(finetune.router)
+app.include_router(rag.router)
 
 
 @app.get("/healthz")

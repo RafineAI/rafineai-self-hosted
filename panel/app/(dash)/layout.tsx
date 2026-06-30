@@ -9,6 +9,7 @@ import type { User } from "@/lib/types";
 const NAV = [
   { href: "/chat", label: "Chat", icon: "💬", adminOnly: false },
   { href: "/documents", label: "Belgelerim", icon: "📁", adminOnly: false },
+  { href: "/knowledge", label: "Bilgi Tabanı", icon: "📚", adminOnly: false },
   { href: "/connections", label: "Bağlantılarım", icon: "🔗", adminOnly: false },
   { href: "/marketplace", label: "Marketplace", icon: "🧩", adminOnly: false },
   { href: "/dashboard", label: "Dashboard", icon: "📊", adminOnly: true },
