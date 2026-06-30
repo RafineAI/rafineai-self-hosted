@@ -198,6 +198,45 @@ class OwnKeyOut(BaseModel):
     created_at: str
 
 
+# ---- Teams ----
+class TeamCreate(BaseModel):
+    name: str = Field(min_length=1)
+    description: str = ""
+    rate_limit_rpm: int | None = Field(default=None, ge=0)
+    daily_token_quota: int | None = Field(default=None, ge=0)
+    provider_ids: list[str] = []
+
+
+class TeamUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    rate_limit_rpm: int | None = Field(default=None, ge=0)
+    daily_token_quota: int | None = Field(default=None, ge=0)
+    provider_ids: list[str] | None = None
+
+
+class TeamOut(BaseModel):
+    id: str
+    name: str
+    description: str
+    rate_limit_rpm: int | None = None
+    daily_token_quota: int | None = None
+    member_count: int = 0
+    provider_ids: list[str] = []
+    created_at: str
+
+
+class TeamMemberOut(BaseModel):
+    user_id: str
+    email: str
+    role_in_team: str
+
+
+class TeamMemberAdd(BaseModel):
+    user_id: str
+    role_in_team: str = Field(default="member", pattern="^(member|lead)$")
+
+
 # ---- Documents ----
 class DocumentOut(BaseModel):
     id: str

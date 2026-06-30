@@ -68,6 +68,46 @@ func (s *Store) loadUserOwnKeys(ctx context.Context) map[string]string {
 	return result
 }
 
+// loadTeams populates per-team limits and the user→teams membership map.
+// Silently no-ops if the team tables don't exist yet (pre-0009).
+func (s *Store) loadTeams(ctx context.Context, snap *state.Snapshot) {
+	trows, err := s.pool.Query(ctx,
+		`SELECT id::text, rate_limit_rpm, daily_token_quota FROM teams`)
+	if err != nil {
+		return // tables may not exist yet
+	}
+	for trows.Next() {
+		var tid string
+		var rpm, daily *int
+		if trows.Scan(&tid, &rpm, &daily) != nil {
+			continue
+		}
+		tl := state.UserLimit{RPM: -1, DailyTokens: -1}
+		if rpm != nil {
+			tl.RPM = *rpm
+		}
+		if daily != nil {
+			tl.DailyTokens = *daily
+		}
+		snap.TeamLimits[tid] = tl
+	}
+	trows.Close()
+
+	mrows, err := s.pool.Query(ctx,
+		`SELECT user_id::text, team_id::text FROM team_members`)
+	if err != nil {
+		return
+	}
+	defer mrows.Close()
+	for mrows.Next() {
+		var uid, tid string
+		if mrows.Scan(&uid, &tid) != nil {
+			continue
+		}
+		snap.UserTeams[uid] = append(snap.UserTeams[uid], tid)
+	}
+}
+
 // LoadSnapshot builds a fresh in-RAM view from the database, decrypting
 // provider credentials and OAuth tokens with the master key.
 func (s *Store) LoadSnapshot(ctx context.Context) (*state.Snapshot, error) {
@@ -77,7 +117,10 @@ func (s *Store) LoadSnapshot(ctx context.Context) (*state.Snapshot, error) {
 		UserOwnKeys: s.loadUserOwnKeys(ctx),
 		Blocked:     map[string]struct{}{},
 		UserLimits:  map[string]state.UserLimit{},
+		TeamLimits:  map[string]state.UserLimit{},
+		UserTeams:   map[string][]string{},
 	}
+	s.loadTeams(ctx, snap)
 
 	// Providers.
 	rows, err := s.pool.Query(ctx, `

@@ -23,6 +23,7 @@ from .routers import (
     oauth,
     policy,
     providers,
+    teams,
     user_keys,
     users,
 )
@@ -67,6 +68,7 @@ app.include_router(policy.router)
 app.include_router(policy.alerts_router)
 app.include_router(user_keys.router)
 app.include_router(documents.router)
+app.include_router(teams.router)
 
 
 @app.get("/healthz")

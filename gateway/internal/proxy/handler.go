@@ -54,8 +54,9 @@ func snippet(masked string) string {
 	return s
 }
 
-// limitsFor resolves a user's effective limits, applying per-user overrides on
-// top of the gateway defaults.
+// limitsFor resolves a user's effective limits. Precedence: a personal override
+// wins; otherwise the most restrictive limit among the user's teams; otherwise
+// the gateway default.
 func (h *Handler) limitsFor(snap *state.Snapshot, userID string) ratelimit.Limits {
 	lim := h.DefaultLimits
 	if ul, ok := snap.UserLimitFor(userID); ok {
@@ -64,6 +65,15 @@ func (h *Handler) limitsFor(snap *state.Snapshot, userID string) ratelimit.Limit
 		}
 		if ul.DailyTokens >= 0 {
 			lim.DailyTokens = ul.DailyTokens
+		}
+		return lim
+	}
+	if tl, ok := snap.TeamLimitFor(userID); ok {
+		if tl.RPM >= 0 {
+			lim.RPM = tl.RPM
+		}
+		if tl.DailyTokens >= 0 {
+			lim.DailyTokens = tl.DailyTokens
 		}
 	}
 	return lim

@@ -34,6 +34,23 @@ export interface OwnKey {
   created_at: string;
 }
 
+export interface Team {
+  id: string;
+  name: string;
+  description: string;
+  rate_limit_rpm: number | null;
+  daily_token_quota: number | null;
+  member_count: number;
+  provider_ids: string[];
+  created_at: string;
+}
+
+export interface TeamMember {
+  user_id: string;
+  email: string;
+  role_in_team: string;
+}
+
 export interface Document {
   id: string;
   filename: string;
