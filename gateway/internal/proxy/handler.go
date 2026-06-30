@@ -192,7 +192,7 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 	ctx := c.Request().Context()
 
 	if req.Stream {
-		return h.streamChat(c, adapter, p, credential, req, claims, appliedSet, start)
+		return h.streamChat(c, adapter, p, credential, req, claims, appliedSet, rules, snap.MaskResponses, start)
 	}
 
 	upstreamReq, err := adapter.BuildRequest(ctx, p, credential, req)
@@ -220,6 +220,20 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 		return jsonError(c, http.StatusBadGateway, "parse_error", err.Error())
 	}
 
+	// Response masking: redact sensitive spans in the assistant reply.
+	if snap.MaskResponses {
+		res := policy.ApplyResponse(parsed.Content, rules)
+		parsed.Content = res.Text
+		for _, f := range res.Findings {
+			appliedSet["resp:"+f.Rule] = struct{}{}
+			h.Alerts.Enqueue(alert.Entry{
+				UserID: claims.UserID, ConversationID: convID,
+				RuleName: "response:" + f.Rule, Category: f.Category, Action: f.Action,
+				Severity: f.Severity, Snippet: snippet(res.Text),
+			})
+		}
+	}
+
 	h.Limiter.AddTokens(claims.UserID, parsed.PromptTokens+parsed.CompletionTokens)
 	h.audit(claims, p, firstNonEmpty(req.Model, p.DefaultModel),
 		parsed.PromptTokens, parsed.CompletionTokens, http.StatusOK, appliedSet, c, "", start)
@@ -232,7 +246,7 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 // audits the captured usage at the end.
 func (h *Handler) streamChat(c echo.Context, adapter provider.Adapter, p state.Provider,
 	credential string, req provider.ChatRequest, claims signing.Claims,
-	appliedSet map[string]struct{}, start time.Time) error {
+	appliedSet map[string]struct{}, rules []*policy.Rule, maskResponses bool, start time.Time) error {
 
 	ctx := c.Request().Context()
 	model := firstNonEmpty(req.Model, p.DefaultModel)
@@ -283,9 +297,36 @@ func (h *Handler) streamChat(c echo.Context, adapter provider.Adapter, p state.P
 	// Initial role delta (OpenAI convention).
 	writeChunk(map[string]any{"role": "assistant"}, nil)
 
-	usage, decErr := adapter.DecodeStream(resp.Body, func(textDelta string) {
-		writeChunk(map[string]any{"content": textDelta}, nil)
-	})
+	emit := func(text string) {
+		if text != "" {
+			writeChunk(map[string]any{"content": text}, nil)
+		}
+	}
+
+	var usage provider.Usage
+	var decErr error
+	if maskResponses {
+		// Mask the reply as it streams, releasing redacted text on whitespace
+		// boundaries (sensitive tokens are contiguous, so never split).
+		masker := policy.NewStreamMasker(rules)
+		usage, decErr = adapter.DecodeStream(resp.Body, func(textDelta string) {
+			emit(masker.Push(textDelta))
+		})
+		emit(masker.Close())
+		for _, f := range masker.Findings() {
+			appliedSet["resp:"+f.Rule] = struct{}{}
+			h.Alerts.Enqueue(alert.Entry{
+				UserID:         claims.UserID,
+				ConversationID: c.Request().Header.Get("X-Rafine-Conversation"),
+				RuleName:       "response:" + f.Rule, Category: f.Category,
+				Action: f.Action, Severity: f.Severity, Snippet: "[response masked]",
+			})
+		}
+	} else {
+		usage, decErr = adapter.DecodeStream(resp.Body, func(textDelta string) {
+			emit(textDelta)
+		})
+	}
 
 	// Final stop chunk, then a usage-only chunk (OpenAI include_usage style),
 	// then the DONE sentinel.

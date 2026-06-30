@@ -24,6 +24,38 @@ func TestBuiltinMasksTCKN(t *testing.T) {
 	}
 }
 
+func TestStreamMaskerMasksAcrossChunks(t *testing.T) {
+	// A TCKN split across several stream deltas must still be masked once a
+	// whitespace boundary flushes the completed token.
+	m := NewStreamMasker(Builtins())
+	var out strings.Builder
+	for _, delta := range []string{"kimlik ", "no 123", "4567", "8901 ", "teşekkürler"} {
+		out.WriteString(m.Push(delta))
+	}
+	out.WriteString(m.Close())
+	got := out.String()
+	if strings.Contains(got, "12345678901") {
+		t.Fatalf("TCKN leaked through stream masker: %q", got)
+	}
+	if !strings.Contains(got, MaskToken) {
+		t.Fatalf("expected mask token in %q", got)
+	}
+	if !strings.Contains(got, "teşekkürler") {
+		t.Fatalf("non-sensitive tail dropped: %q", got)
+	}
+}
+
+func TestApplyResponseDowngradesBlockToMask(t *testing.T) {
+	rules := []*Rule{NewRegexRule("blk", "secret", ActionBlock, "high", `SECRET\d+`)}
+	r := ApplyResponse("token SECRET123 end", rules)
+	if r.Blocked {
+		t.Fatal("response masking must never block")
+	}
+	if strings.Contains(r.Text, "SECRET123") {
+		t.Fatal("block-action rule should still redact in responses")
+	}
+}
+
 func TestBuiltinMasksOpenAIKey(t *testing.T) {
 	r := Apply("my key is sk-abcdef0123456789ABCDEF okay", Builtins())
 	if strings.Contains(r.Text, "sk-abcdef0123456789ABCDEF") {

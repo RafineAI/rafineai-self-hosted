@@ -55,6 +55,8 @@ type Snapshot struct {
 	// Rules holds compiled admin-defined custom policy rules (applied in
 	// addition to the gateway's built-in detectors).
 	Rules []*policy.Rule
+	// MaskResponses enables masking of assistant replies (default true).
+	MaskResponses bool
 }
 
 // TeamLimitFor resolves the most restrictive (lowest positive) limit among the

@@ -21,6 +21,7 @@ export default function PolicyPage() {
   const [builtins, setBuiltins] = useState<Builtin[]>([]);
   const [rules, setRules] = useState<PolicyRule[]>([]);
   const [error, setError] = useState("");
+  const [maskResponses, setMaskResponses] = useState(true);
   const [form, setForm] = useState({
     name: "", category: "custom", kind: "keyword", pattern: "",
     action: "mask", severity: "medium",
@@ -31,8 +32,25 @@ export default function PolicyPage() {
   }
   useEffect(() => {
     api<Builtin[]>("/api/policy/builtins").then(setBuiltins).catch(() => {});
+    api<Record<string, string>>("/api/settings")
+      .then((s) => setMaskResponses(s.mask_responses !== "false"))
+      .catch(() => {});
     refresh().catch((e) => setError(e.message));
   }, []);
+
+  async function toggleMaskResponses() {
+    const next = !maskResponses;
+    setMaskResponses(next);
+    try {
+      await api("/api/settings/mask_responses", {
+        method: "PUT",
+        body: JSON.stringify({ value: next ? "true" : "false" }),
+      });
+    } catch (e: any) {
+      setMaskResponses(!next);
+      setError(e.message);
+    }
+  }
 
   function set<K extends keyof typeof form>(k: K, v: string) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -71,6 +89,24 @@ export default function PolicyPage() {
         Hassas içerik tespiti. Eşleşmeler kullanıcıya görünmeden maskelenir/bloklanır
         ve admin’e uyarı düşer. Türkçe finansal ve müşteri-verisi sözlükleri dahildir.
       </p>
+
+      {/* Response masking toggle */}
+      <div className="card mb-6 flex items-center justify-between p-5">
+        <div>
+          <h2 className="font-semibold">LLM yanıtında maskeleme</h2>
+          <p className="text-sm text-slate-500">
+            Açıkken, modelin ürettiği yanıttaki hassas veriler (TCKN, IBAN, kart, API anahtarı vb.)
+            kullanıcıya gösterilmeden önce maskelenir. Streaming yanıtlarda da çalışır.
+          </p>
+        </div>
+        <button
+          onClick={toggleMaskResponses}
+          className={`relative h-7 w-12 shrink-0 rounded-full transition ${maskResponses ? "bg-brand" : "bg-slate-300"}`}
+          title={maskResponses ? "Açık" : "Kapalı"}
+        >
+          <span className={`absolute top-1 h-5 w-5 rounded-full bg-white transition-all ${maskResponses ? "left-6" : "left-1"}`} />
+        </button>
+      </div>
 
       {/* Built-in detectors */}
       <div className="card mb-8 p-5">
