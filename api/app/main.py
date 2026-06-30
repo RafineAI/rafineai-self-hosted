@@ -20,6 +20,7 @@ from .routers import (
     auth,
     conversations,
     documents,
+    github,
     marketplace,
     metrics,
     oauth,
@@ -74,6 +75,7 @@ app.include_router(documents.router)
 app.include_router(teams.router)
 app.include_router(metrics.router)
 app.include_router(marketplace.router)
+app.include_router(github.router)
 
 
 @app.get("/healthz")
