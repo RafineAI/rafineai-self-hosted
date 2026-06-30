@@ -24,7 +24,19 @@ export default function ApiClientPage() {
   async function refreshSaved() {
     setSaved(await api<Saved[]>("/api/tools/api-client/requests"));
   }
-  useEffect(() => { refreshSaved().catch(() => {}); }, []);
+  useEffect(() => {
+    refreshSaved().catch(() => {});
+    // Pick up an endpoint handed over from the Swagger tool.
+    const prefill = localStorage.getItem("rafine_apiclient_prefill");
+    if (prefill) {
+      try {
+        const p = JSON.parse(prefill);
+        if (p.method) setMethod(p.method);
+        if (p.url) setUrl(p.url);
+      } catch { /* ignore */ }
+      localStorage.removeItem("rafine_apiclient_prefill");
+    }
+  }, []);
 
   function parseHeaders(): Record<string, string> {
     const h: Record<string, string> = {};
