@@ -59,6 +59,13 @@ export interface ConfigField {
   optional?: boolean;
 }
 
+export interface SetupGuide {
+  subtitle?: string;
+  console_url: string;
+  console_label: string;
+  steps: string[];
+}
+
 export interface MarketplaceApp {
   slug: string;
   name: string;
@@ -66,6 +73,7 @@ export interface MarketplaceApp {
   icon: string;
   description: string;
   config_fields: ConfigField[];
+  guide?: SetupGuide | null;
   needs_config: boolean;
   installed: boolean;
   enabled: boolean;
