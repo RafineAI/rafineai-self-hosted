@@ -48,16 +48,23 @@ CATALOG: list[dict[str, Any]] = [
         "config_fields": [
             {"key": "bot_token", "label": "Bot User OAuth Token", "secret": True,
              "placeholder": "xoxb-..."},
+            {"key": "signing_secret", "label": "Signing Secret (otomatik cevap için)",
+             "secret": True, "placeholder": "Basic Information → Signing Secret",
+             "optional": True},
         ],
         "guide": {
             "subtitle": "Entegrasyon kurulumu",
             "console_url": "https://api.slack.com/apps",
             "console_label": "Slack API → Your Apps",
             "steps": [
-                "api.slack.com/apps adresine git ve Create New App ile uygulamanı oluştur.",
-                "OAuth & Permissions → Bot Token Scopes'a channels:read ve chat:write ekle.",
-                "Install to Workspace → Bot User OAuth Token'ı (xoxb-…) kopyala.",
-                "Aşağıya yapıştır ve Kaydet'e bas.",
+                "api.slack.com/apps → uygulamanı aç (yoksa Create New App ile oluştur).",
+                "OAuth & Permissions → Bot Token Scopes: channels:read, channels:history, "
+                "chat:write, app_mentions:read ekle.",
+                "Install/Reinstall to Workspace → Bot User OAuth Token'ı (xoxb-…) kopyala.",
+                "Otomatik cevap için: Event Subscriptions'ı aç ve Request URL'e "
+                "https://<panel-adresin>/api/tools/slack/events gir.",
+                "Subscribe to bot events → app_mention ekle ve değişiklikleri kaydet.",
+                "Basic Information → Signing Secret'ı kopyalayıp aşağıdaki alana gir; Kaydet'e bas.",
             ],
         },
     },
