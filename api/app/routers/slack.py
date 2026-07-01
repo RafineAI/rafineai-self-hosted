@@ -214,24 +214,27 @@ async def slack_events(request: Request, settings: Settings = Depends(get_settin
     Replies are generated asynchronously so Slack still gets its <3s 200 ack.
     """
     raw = await request.body()
-    cfg = await get_config("slack", required=False)
-    secret = cfg.get("signing_secret", "")
-    if not _verify_signature(
-        secret,
-        request.headers.get("X-Slack-Request-Timestamp", ""),
-        request.headers.get("X-Slack-Signature", ""),
-        raw,
-    ):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid slack signature")
-
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid payload")
 
     # URL verification handshake (Slack calls this when you set the Request URL).
+    # It carries no side effects, so we echo the challenge without requiring the
+    # signature — this lets the URL be verified even before the Signing Secret is
+    # saved in the panel (avoids a setup chicken-and-egg).
     if payload.get("type") == "url_verification":
         return {"challenge": payload.get("challenge", "")}
+
+    # Every real event must be signature-verified with the app Signing Secret.
+    cfg = await get_config("slack", required=False)
+    if not _verify_signature(
+        cfg.get("signing_secret", ""),
+        request.headers.get("X-Slack-Request-Timestamp", ""),
+        request.headers.get("X-Slack-Signature", ""),
+        raw,
+    ):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid slack signature")
 
     if payload.get("type") == "event_callback":
         event = payload.get("event", {})

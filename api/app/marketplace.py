@@ -77,7 +77,7 @@ CATALOG: list[dict[str, Any]] = [
                        "ayrıntılarını LLM'e açıklatın.",
         "config_fields": [
             {"key": "token", "label": "Auth Token", "secret": True,
-             "placeholder": "sntrys_..."},
+             "placeholder": "sntryu_..."},
             {"key": "org_slug", "label": "Organizasyon slug", "secret": False,
              "placeholder": "my-org"},
             {"key": "api_base", "label": "API Base", "secret": False,
@@ -86,12 +86,12 @@ CATALOG: list[dict[str, Any]] = [
         "guide": {
             "subtitle": "Entegrasyon kurulumu",
             "console_url": "https://sentry.io/settings/account/api/auth-tokens/",
-            "console_label": "Sentry → Auth Tokens",
+            "console_label": "Sentry → User Settings → Auth Tokens",
             "steps": [
-                "sentry.io → Settings → Auth Tokens'a git.",
-                "Create New Token → project:read yetkisini seç.",
-                "Token'ı (sntrys_…) kopyala.",
-                "Organizasyon slug'ını Sentry URL'inden al, aşağıya gir ve Kaydet'e bas.",
+                "Sentry'de sol-altta avatarın → User Settings → Auth Tokens'a git.",
+                "Create New Token → project:read, event:read ve org:read yetkilerini seç.",
+                "Token'ı (sntryu_…) kopyala. (SSO/Authentication sayfası DEĞİL — o giriş sağlayıcısıdır.)",
+                "Organizasyon slug'ını Sentry URL'inden (<org>.sentry.io) al, aşağıya gir ve Kaydet'e bas.",
             ],
         },
     },
