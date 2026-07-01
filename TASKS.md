@@ -75,3 +75,37 @@ Bu dosya projenin görev listesidir (kaynak doğruluk). Durum: `[ ]` bekliyor, `
 - LDAP / SSO
 - Ollama (lokal model) adapteri
 - Verified (imzalı) commit'ler
+
+## Phase 5 — Marketplace rehberli kurulum & entegrasyon-chat (PR #12)
+Branch: `claude/rafineai-llm-marketplace-setup-8ruiak`
+
+Yapılanlar:
+- [x] **P5-A** Marketplace kurulum modalı: LLM bağlama (Bağlantılarım) akışındaki
+      rehberli "adım adım + konsol linki → form" yapısı; katalogda `guide` bloğu
+      (github/slack/sentry), `SetupGuide` tipi.
+- [x] **P5-B** Slack: `@mention` → gateway üzerinden policy-kontrollü otomatik
+      cevap (aynı thread). Events API webhook (`POST /api/tools/slack/events`),
+      HMAC imza doğrulama + replay koruması, `slack_events_seen` dedup (0019).
+- [x] **P5-C** Slack: `url_verification` challenge'ı imzadan önce yanıtla
+      (kurulum tavuk-yumurta sorunu).
+- [x] **P5-D** Sentry: `POST /api/tools/sentry/explain` — issue linki → son event
+      stacktrace → LLM kök-neden + çözüm (panelde). Token rehberi düzeltildi.
+- [x] **P5-E** Chat'e bağlam ekleme: `POST /api/tools/context` (sentry/github/slack)
+      → `<document>` bloğu; chat'te 🧩 menü + bağlam çipleri.
+
+Bekleyen (sonra bakılacak):
+- [ ] **P5-F** Entegrasyon testleri: `/events` (imza + challenge + app_mention
+      dedup), `/explain`, `/context` (kaynak dispatch + hatalı ref). CI gerçek
+      Postgres'e karşı çalışıyor; bu oturumda test çalıştırılmadı.
+- [ ] **P5-G** Deploy notu: bu özellikler çalışan instance'a deploy edilmeden
+      görünmez (özellikle yeni Slack `/events` endpoint'i → aksi halde 404,
+      challenge başarısız). api + panel bu branch'le yeniden build edilmeli.
+- [ ] **P5-H** Slack kurulum gereksinimleri (kullanıcı aksiyonu): Bot scopes
+      (`app_mentions:read`, `channels:read/history`, `chat:write`), Event
+      Subscriptions + `app_mention`, Signing Secret'ın panele girilmesi, botun
+      kanala `/invite` edilmesi.
+- [ ] **P5-I** Policy `block` durumunda Slack/analiz yanıtını "içerik politikası
+      engelledi" olarak netleştir (şu an `quick_complete` genel hata döndürüyor;
+      alert yine basılıyor).
+- [ ] **P5-J** `slack_events_seen` için periyodik temizlik (sınırsız büyümesin).
+- [ ] **P5-K** (opsiyonel, ertelendi) PR #12'yi izleme: CI/otofix + review yanıtları.
