@@ -12,6 +12,7 @@ from .. import crypto, db
 from ..config import Settings, get_settings
 from ..deps import CurrentUser, get_current_user
 from ..schemas import OwnKeyCreate, OwnKeyOut
+from ..validate import validate_api_key
 
 KNOWN_TYPES = {"openai", "anthropic", "gemini"}
 
@@ -37,6 +38,7 @@ async def upsert_own_key(
 ):
     if provider_type not in KNOWN_TYPES:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"Bilinmeyen provider tipi: {provider_type}")
+    await validate_api_key(provider_type, body.api_key)
     enc = crypto.encrypt(settings.rafine_master_key, body.api_key)
     await db.pool().execute(
         """

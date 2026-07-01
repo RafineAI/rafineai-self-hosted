@@ -30,8 +30,10 @@ from .routers import (
     providers,
     rag,
     sentry,
+    settings,
     slack,
     teams,
+    uploads,
     user_keys,
     users,
 )
@@ -71,11 +73,14 @@ app.include_router(users.router)
 app.include_router(providers.router)
 app.include_router(oauth.router)
 app.include_router(conversations.router)
+app.include_router(conversations.admin_router)
 app.include_router(audit.router)
 app.include_router(policy.router)
 app.include_router(policy.alerts_router)
 app.include_router(policy.settings_router)
 app.include_router(user_keys.router)
+app.include_router(settings.router)
+app.include_router(uploads.router)
 app.include_router(documents.router)
 app.include_router(teams.router)
 app.include_router(metrics.router)

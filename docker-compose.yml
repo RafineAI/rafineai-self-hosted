@@ -48,7 +48,9 @@ services:
       GATEWAY_URL: http://gateway:8080
       RAFINE_PUBLIC_URL: ${RAFINE_PUBLIC_URL}
       STORAGE_DIR: /data/storage
+      UPLOADS_DIR: /data/uploads
     volumes:
+      - rafine_uploads:/data/uploads
       - storage:/data/storage
     depends_on:
       postgres:
@@ -70,6 +72,7 @@ services:
       - "${HTTP_PORT:-80}:80"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - rafine_uploads:/data/uploads:ro
     depends_on:
       - panel
       - api
@@ -77,4 +80,5 @@ services:
 
 volumes:
   pgdata:
+  rafine_uploads:
   storage:

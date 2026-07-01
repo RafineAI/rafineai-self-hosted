@@ -7,6 +7,7 @@ from .. import crypto, db
 from ..config import Settings, get_settings
 from ..deps import CurrentUser, get_current_user, require_admin
 from ..schemas import ProviderCreate, ProviderOut, ProviderUpdate
+from ..validate import validate_api_key
 
 router = APIRouter(prefix="/api/providers", tags=["providers"])
 
@@ -100,6 +101,8 @@ async def create_provider(
     _: CurrentUser = Depends(require_admin),
     settings: Settings = Depends(get_settings),
 ):
+    if body.api_key and body.auth_mode == "api_key":
+        await validate_api_key(body.type, body.api_key, body.base_url)
     api_key_enc = (
         crypto.encrypt(settings.rafine_master_key, body.api_key)
         if body.api_key
@@ -143,6 +146,12 @@ async def update_provider(
     if body.name is not None:
         args.append(body.name); sets.append(f"name = ${len(args)}")
     if body.api_key is not None:
+        # Fetch current provider type + base_url to validate the new key
+        cur = await db.pool().fetchrow(
+            "SELECT type, auth_mode, base_url FROM llm_providers WHERE id = $1", provider_id
+        )
+        if cur and cur["auth_mode"] == "api_key":
+            await validate_api_key(cur["type"], body.api_key, body.base_url or cur["base_url"])
         args.append(crypto.encrypt(settings.rafine_master_key, body.api_key))
         sets.append(f"api_key_encrypted = ${len(args)}")
     if body.base_url is not None:

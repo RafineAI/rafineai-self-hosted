@@ -27,7 +27,9 @@ class Settings(BaseSettings):
     # Path to SQL migrations (relative to repo root inside the container)
     migrations_dir: str = "db/migrations"
 
-    # Local file storage root (mounted volume in production).
+    # Directory for chat/message uploaded files (served via nginx /uploads/).
+    uploads_dir: str = "/data/uploads"
+    # Local document-storage root (Belgelerim / RAG corpus), mounted volume.
     storage_dir: str = "/data/storage"
     # Maximum upload size in bytes (default 25 MB, matches nginx client_max_body_size).
     max_upload_bytes: int = 25 * 1024 * 1024

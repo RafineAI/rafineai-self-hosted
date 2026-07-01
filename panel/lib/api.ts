@@ -86,12 +86,15 @@ export async function api<T = unknown>(
 
 /**
  * Stream a chat reply. POSTs to the streaming endpoint and invokes onDelta for
- * each token as it arrives. Resolves when the stream ends.
+ * each token as it arrives. Error chunks (policy blocks, gateway errors) are
+ * delivered via onError so the UI can display them differently.
+ * Resolves when the stream ends.
  */
 export async function streamChat(
   conversationId: string,
   content: string,
   onDelta: (text: string) => void,
+  onError?: (msg: string) => void,
 ): Promise<void> {
   const headers = new Headers({ "Content-Type": "application/json" });
   const token = getToken();
@@ -123,12 +126,34 @@ export async function streamChat(
       try {
         const chunk = JSON.parse(payload);
         const piece = chunk.choices?.[0]?.delta?.content;
-        if (piece) onDelta(piece);
+        if (!piece) continue;
+        if (chunk.error) {
+          onError ? onError(piece) : onDelta(piece);
+        } else {
+          onDelta(piece);
+        }
       } catch {
         /* ignore partial/non-JSON keepalives */
       }
     }
   }
+}
+
+/** Upload a file (multipart/form-data). Handles auth automatically. */
+export async function uploadFile<T = unknown>(path: string, formData: FormData, retry = true): Promise<T> {
+  const headers = new Headers();
+  const token = getToken();
+  if (token) headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(`${BASE}${path}`, { method: "POST", headers, body: formData });
+  if (res.status === 401 && retry && (await tryRefresh())) {
+    return uploadFile<T>(path, formData, false);
+  }
+  if (!res.ok) {
+    let msg = res.statusText;
+    try { const b = await res.json(); msg = b.detail ?? msg; } catch {}
+    throw new ApiError(res.status, typeof msg === "string" ? msg : JSON.stringify(msg));
+  }
+  return res.json() as Promise<T>;
 }
 
 /**

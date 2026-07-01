@@ -85,13 +85,11 @@ async def delete_rule(rule_id: str, _: CurrentUser = Depends(require_admin)):
 
 
 # ---- Global policy settings ----
+# NOTE: reading all settings is served by routers/settings.py (public GET
+# /api/settings). Here we only expose the admin-only per-key PUT used to toggle
+# mask_responses; the path (/api/settings/{key}) does not collide with the
+# settings router's bulk PUT (/api/settings).
 settings_router = APIRouter(prefix="/api/settings", tags=["settings"])
-
-
-@settings_router.get("")
-async def get_settings_values(_: CurrentUser = Depends(require_admin)):
-    rows = await db.pool().fetch("SELECT key, value FROM app_settings")
-    return {r["key"]: r["value"] for r in rows}
 
 
 @settings_router.put("/{key}", status_code=status.HTTP_204_NO_CONTENT)
@@ -101,8 +99,8 @@ async def set_setting(key: str, body: dict, _: CurrentUser = Depends(require_adm
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "bilinmeyen ayar")
     value = str(body.get("value", "")).lower()
     await db.pool().execute(
-        "INSERT INTO app_settings (key, value) VALUES ($1, $2) "
-        "ON CONFLICT (key) DO UPDATE SET value = $2",
+        "INSERT INTO app_settings (key, value, updated_at) VALUES ($1, $2, now()) "
+        "ON CONFLICT (key) DO UPDATE SET value = $2, updated_at = now()",
         key, value,
     )
 
