@@ -6,6 +6,7 @@ server-side proxies so the token never reaches the browser.
 from __future__ import annotations
 
 import base64
+import re
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -16,6 +17,9 @@ from ..integrations import get_config
 router = APIRouter(prefix="/api/tools/github", tags=["github"])
 
 _MAX_FILE_BYTES = 512 * 1024
+
+# https://github.com/<owner>/<repo>/blob/<branch>/<path...>
+_GH_BLOB_RE = re.compile(r"github\.com/([^/]+)/([^/]+)/blob/[^/]+/(.+)")
 
 
 async def _client() -> tuple[httpx.AsyncClient, str]:
@@ -94,3 +98,32 @@ async def read_file(
     except Exception:  # noqa: BLE001
         text = "(ikili dosya — önizlenemiyor)"
     return {"path": data["path"], "size": data.get("size", 0), "content": text}
+
+
+async def file_context(ref: str) -> tuple[str, str]:
+    """(label, file-content) for the chat context-attach feature.
+
+    Accepts a github.com blob URL or an `owner/repo/path` reference.
+    """
+    ref = ref.strip().split("?")[0].split("#")[0]
+    m = _GH_BLOB_RE.search(ref)
+    if m:
+        owner, repo, path = m.group(1), m.group(2), m.group(3)
+    else:
+        parts = ref.lstrip("/").split("/", 2)
+        if len(parts) < 3 or not all(parts):
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "GitHub dosya linki ya da 'owner/repo/dosya/yolu' girin.",
+            )
+        owner, repo, path = parts
+    data = await _get(f"/repos/{owner}/{repo}/contents/{path}")
+    if isinstance(data, list):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "bu bir klasör, dosya girin")
+    if data.get("size", 0) > _MAX_FILE_BYTES:
+        raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "dosya çok büyük")
+    try:
+        text = base64.b64decode(data.get("content", "")).decode("utf-8", errors="replace")
+    except Exception:  # noqa: BLE001
+        text = "(ikili dosya — önizlenemiyor)"
+    return f"GitHub: {owner}/{repo}/{path}", f"Dosya: {path}\n\n{text}"

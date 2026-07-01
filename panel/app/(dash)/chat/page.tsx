@@ -21,6 +21,13 @@ function parseMessageContent(content: string): { text: string; attachments: Atta
   return { text, attachments };
 }
 
+// Marketplace tools that can inject context into a chat, with a per-source hint.
+const CONTEXT_SOURCES: Record<string, string> = {
+  sentry: "Sentry issue linki veya id",
+  github: "GitHub dosya linki veya owner/repo/yol",
+  slack: "Slack kanal id (Cxxx) veya #kanal",
+};
+
 export default function ChatPage() {
   const router = useRouter();
   const [providers, setProviders] = useState<Provider[]>([]);
@@ -37,6 +44,14 @@ export default function ChatPage() {
   const [modelOpen, setModelOpen] = useState(false);
   const [pendingAttachments, setPendingAttachments] = useState<Attachment[]>([]);
   const [uploadingFile, setUploadingFile] = useState(false);
+  // Context attach (marketplace tools → chat context)
+  const [ctxSources, setCtxSources] = useState<{ slug: string; name: string; icon: string }[]>([]);
+  const [ctxMenuOpen, setCtxMenuOpen] = useState(false);
+  const [ctxSource, setCtxSource] = useState<string>("");   // slug being entered
+  const [ctxRef, setCtxRef] = useState("");
+  const [ctxLoading, setCtxLoading] = useState(false);
+  const [pendingContexts, setPendingContexts] = useState<{ label: string; text: string }[]>([]);
+  const ctxRef2 = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const modelRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -64,7 +79,47 @@ export default function ChatPage() {
     setDark(getDark());
     loadProviders();
     refreshConversations();
+    // Which installed+enabled integrations can be attached as chat context.
+    api<{ slug: string; name: string; icon: string; installed: boolean; enabled: boolean }[]>("/api/marketplace")
+      .then((apps) =>
+        setCtxSources(
+          apps
+            .filter((a) => a.installed && a.enabled && a.slug in CONTEXT_SOURCES)
+            .map((a) => ({ slug: a.slug, name: a.name, icon: a.icon })),
+        ),
+      )
+      .catch(() => {});
   }, []);
+
+  // Close the context menu on outside click.
+  useEffect(() => {
+    function handle(e: MouseEvent) {
+      if (ctxRef2.current && !ctxRef2.current.contains(e.target as Node)) {
+        setCtxMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, []);
+
+  async function addContext() {
+    if (!ctxSource || !ctxRef.trim()) return;
+    setCtxLoading(true);
+    setError("");
+    try {
+      const res = await api<{ label: string; text: string }>("/api/tools/context", {
+        method: "POST",
+        body: JSON.stringify({ source: ctxSource, ref: ctxRef.trim() }),
+      });
+      setPendingContexts((prev) => [...prev, res]);
+      setCtxSource("");
+      setCtxRef("");
+    } catch (e: any) {
+      setError(e.message ?? "Bağlam eklenemedi");
+    } finally {
+      setCtxLoading(false);
+    }
+  }
 
   // Re-fetch providers when the tab regains focus (user may have added a BYOK
   // key on the Connections page and navigated back).
@@ -108,6 +163,9 @@ export default function ChatPage() {
     setMessages([]);
     setError("");
     setPendingAttachments([]);
+    setPendingContexts([]);
+    setCtxSource("");
+    setCtxRef("");
   }
 
   async function attachFile(file: File) {
@@ -174,18 +232,24 @@ export default function ChatPage() {
   );
 
   async function send() {
-    if ((!input.trim() && pendingAttachments.length === 0) || sending) return;
+    if ((!input.trim() && pendingAttachments.length === 0 && pendingContexts.length === 0) || sending) return;
     const text = input.trim();
     const atts = [...pendingAttachments];
+    const ctxs = [...pendingContexts];
     // Inject <document> blocks for files with extracted text (LLM reads these)
     const docBlocks = atts
       .filter((a) => a.text_content)
       .map((a) => `\n\n<document filename="${a.filename}">\n${a.text_content}\n</document>`)
       .join("");
+    // Inject marketplace-tool context the same way (stripped from the bubble).
+    const ctxBlocks = ctxs
+      .map((c) => `\n\n<document filename="${c.label}">\n${c.text}\n</document>`)
+      .join("");
     const attMeta = atts.length > 0 ? `\n\n<!--rafine-attachments:${JSON.stringify(atts)}-->` : "";
-    const content = text + docBlocks + attMeta;
+    const content = text + docBlocks + ctxBlocks + attMeta;
     setInput("");
     setPendingAttachments([]);
+    setPendingContexts([]);
     setSending(true);
     setError("");
 
@@ -473,6 +537,41 @@ export default function ChatPage() {
               ))}
             </div>
           )}
+          {/* Pending tool-context chips */}
+          {pendingContexts.length > 0 && (
+            <div className="flex flex-wrap gap-2 px-4 pt-3">
+              {pendingContexts.map((c, i) => (
+                <div key={i} className="flex items-center gap-1.5 rounded-lg bg-sky-100 dark:bg-sky-900/30 px-2.5 py-1 text-xs text-sky-700 dark:text-sky-300">
+                  🧩 <span className="max-w-[200px] truncate" title={c.label}>{c.label}</span>
+                  <button
+                    type="button"
+                    className="ml-0.5 text-sky-500 hover:text-sky-700"
+                    onClick={() => setPendingContexts((p) => p.filter((_, j) => j !== i))}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* Context reference input (shown after picking a source) */}
+          {ctxSource && (
+            <div className="flex items-center gap-2 px-4 pt-3">
+              <span className="text-xs text-slate-400">{ctxSources.find((t) => t.slug === ctxSource)?.icon} {ctxSources.find((t) => t.slug === ctxSource)?.name}</span>
+              <input
+                className="input flex-1 text-sm"
+                placeholder={CONTEXT_SOURCES[ctxSource]}
+                value={ctxRef}
+                autoFocus
+                onChange={(e) => setCtxRef(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") addContext(); }}
+              />
+              <button className="btn text-sm" onClick={addContext} disabled={ctxLoading || !ctxRef.trim()}>
+                {ctxLoading ? "…" : "Ekle"}
+              </button>
+              <button className="btn-ghost text-sm" onClick={() => { setCtxSource(""); setCtxRef(""); }}>İptal</button>
+            </div>
+          )}
           <div className="flex items-end gap-2 p-4">
             <input
               ref={fileInputRef}
@@ -484,6 +583,35 @@ export default function ChatPage() {
                 e.target.value = "";
               }}
             />
+            {/* Attach context from an installed marketplace tool */}
+            {ctxSources.length > 0 && (
+              <div className="relative shrink-0" ref={ctxRef2}>
+                <button
+                  type="button"
+                  onClick={() => setCtxMenuOpen((v) => !v)}
+                  disabled={sending}
+                  title="Bağlam ekle (Sentry / GitHub / Slack)"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-300 transition disabled:opacity-40 text-base"
+                >
+                  🧩
+                </button>
+                {ctxMenuOpen && (
+                  <div className="absolute bottom-full left-0 z-50 mb-1.5 w-52 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-xl">
+                    <p className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-slate-400">Bağlam kaynağı</p>
+                    {ctxSources.map((t) => (
+                      <button
+                        key={t.slug}
+                        onClick={() => { setCtxSource(t.slug); setCtxRef(""); setCtxMenuOpen(false); }}
+                        className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-700"
+                      >
+                        <span className="text-base">{t.icon}</span>
+                        <span className="text-slate-700 dark:text-slate-200">{t.name}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
             <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
@@ -531,7 +659,7 @@ export default function ChatPage() {
             <button
               className="btn shrink-0"
               onClick={send}
-              disabled={sending || (!input.trim() && pendingAttachments.length === 0)}
+              disabled={sending || (!input.trim() && pendingAttachments.length === 0 && pendingContexts.length === 0)}
             >
               {sending ? "…" : s.chat_send_label}
             </button>

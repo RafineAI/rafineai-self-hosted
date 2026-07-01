@@ -128,6 +128,34 @@ async def send_message(body: dict, _: CurrentUser = Depends(get_current_user)):
     await _call("chat.postMessage", json_body={"channel": channel, "text": text})
 
 
+_CHANNEL_ID_RE = re.compile(r"^[CG][A-Z0-9]+$")
+
+
+async def channel_context(channel_ref: str, limit: int = 30) -> tuple[str, str]:
+    """(label, recent-messages) for the chat context-attach feature.
+
+    Accepts a channel id (Cxxx/Gxxx) or a #name that is already followed.
+    """
+    ref = channel_ref.strip().lstrip("#")
+    channel_id = ref
+    if not _CHANNEL_ID_RE.match(ref):
+        rows = await db.pool().fetch(
+            "SELECT channel_id, channel_name FROM slack_channels WHERE channel_name = $1", ref
+        )
+        if not rows:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Kanal bulunamadı. Kanal id'si (Cxxx) veya takip edilen bir #kanal adı girin.",
+            )
+        channel_id = rows[0]["channel_id"]
+    data = await _call("conversations.history", params={"channel": channel_id, "limit": limit})
+    lines = [
+        f"{m.get('user', m.get('username', 'bot'))}: {m.get('text', '')}"
+        for m in reversed(data.get("messages", []))
+    ]
+    return f"Slack: #{ref}", "\n".join(lines) or "(kanalda mesaj yok)"
+
+
 # ---------------------------------------------------------------------------
 # Inbound Events API: auto-reply to @-mentions (policy-checked via the gateway)
 # ---------------------------------------------------------------------------
@@ -214,24 +242,27 @@ async def slack_events(request: Request, settings: Settings = Depends(get_settin
     Replies are generated asynchronously so Slack still gets its <3s 200 ack.
     """
     raw = await request.body()
-    cfg = await get_config("slack", required=False)
-    secret = cfg.get("signing_secret", "")
-    if not _verify_signature(
-        secret,
-        request.headers.get("X-Slack-Request-Timestamp", ""),
-        request.headers.get("X-Slack-Signature", ""),
-        raw,
-    ):
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid slack signature")
-
     try:
         payload = json.loads(raw)
     except json.JSONDecodeError:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid payload")
 
     # URL verification handshake (Slack calls this when you set the Request URL).
+    # It carries no side effects, so we echo the challenge without requiring the
+    # signature — this lets the URL be verified even before the Signing Secret is
+    # saved in the panel (avoids a setup chicken-and-egg).
     if payload.get("type") == "url_verification":
         return {"challenge": payload.get("challenge", "")}
+
+    # Every real event must be signature-verified with the app Signing Secret.
+    cfg = await get_config("slack", required=False)
+    if not _verify_signature(
+        cfg.get("signing_secret", ""),
+        request.headers.get("X-Slack-Request-Timestamp", ""),
+        request.headers.get("X-Slack-Signature", ""),
+        raw,
+    ):
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, "invalid slack signature")
 
     if payload.get("type") == "event_callback":
         event = payload.get("event", {})
