@@ -19,6 +19,7 @@ from .routers import (
     api_client,
     audit,
     auth,
+    context,
     conversations,
     documents,
     finetune,
@@ -89,6 +90,7 @@ app.include_router(github.router)
 app.include_router(api_client.router)
 app.include_router(slack.router)
 app.include_router(sentry.router)
+app.include_router(context.router)
 app.include_router(finetune.router)
 app.include_router(rag.router)
 

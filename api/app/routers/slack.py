@@ -128,6 +128,34 @@ async def send_message(body: dict, _: CurrentUser = Depends(get_current_user)):
     await _call("chat.postMessage", json_body={"channel": channel, "text": text})
 
 
+_CHANNEL_ID_RE = re.compile(r"^[CG][A-Z0-9]+$")
+
+
+async def channel_context(channel_ref: str, limit: int = 30) -> tuple[str, str]:
+    """(label, recent-messages) for the chat context-attach feature.
+
+    Accepts a channel id (Cxxx/Gxxx) or a #name that is already followed.
+    """
+    ref = channel_ref.strip().lstrip("#")
+    channel_id = ref
+    if not _CHANNEL_ID_RE.match(ref):
+        rows = await db.pool().fetch(
+            "SELECT channel_id, channel_name FROM slack_channels WHERE channel_name = $1", ref
+        )
+        if not rows:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Kanal bulunamadı. Kanal id'si (Cxxx) veya takip edilen bir #kanal adı girin.",
+            )
+        channel_id = rows[0]["channel_id"]
+    data = await _call("conversations.history", params={"channel": channel_id, "limit": limit})
+    lines = [
+        f"{m.get('user', m.get('username', 'bot'))}: {m.get('text', '')}"
+        for m in reversed(data.get("messages", []))
+    ]
+    return f"Slack: #{ref}", "\n".join(lines) or "(kanalda mesaj yok)"
+
+
 # ---------------------------------------------------------------------------
 # Inbound Events API: auto-reply to @-mentions (policy-checked via the gateway)
 # ---------------------------------------------------------------------------

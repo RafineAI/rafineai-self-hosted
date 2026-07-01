@@ -101,14 +101,9 @@ def _stacktrace_text(event: dict) -> str:
     return "\n".join(lines)
 
 
-@router.post("/explain")
-async def explain_issue(
-    body: ExplainRequest,
-    user: CurrentUser = Depends(get_current_user),
-    settings: Settings = Depends(get_settings),
-):
-    """Fetch an issue's latest event and ask the LLM to explain + propose a fix."""
-    raw = body.issue.strip()
+async def _fetch_issue(issue_ref: str) -> tuple[str, dict, dict]:
+    """Resolve a Sentry issue link/id and fetch its metadata + latest event."""
+    raw = issue_ref.strip()
     m = _ISSUE_ID_RE.search(raw)
     issue_id = m.group(1) if m else (raw if raw.isdigit() else "")
     if not issue_id:
@@ -116,13 +111,15 @@ async def explain_issue(
             status.HTTP_400_BAD_REQUEST,
             "Geçerli bir Sentry issue linki veya id'si girin.",
         )
-
     cfg = await get_config("sentry")
     org = cfg.get("org_slug")
     issue, _ = await _get(f"/api/0/organizations/{org}/issues/{issue_id}/")
     event, _ = await _get(f"/api/0/organizations/{org}/issues/{issue_id}/events/latest/")
+    return issue_id, issue, event
 
-    context = (
+
+def _issue_context_text(issue: dict, event: dict) -> str:
+    return (
         f"Başlık: {issue.get('title', '')}\n"
         f"Culprit: {issue.get('culprit', '')}\n"
         f"Seviye: {issue.get('level', '')}\n"
@@ -130,11 +127,28 @@ async def explain_issue(
         f"Platform: {event.get('platform', '')}\n\n"
         f"Exception / stacktrace:\n{_stacktrace_text(event) or 'Stacktrace bulunamadı.'}"
     )
+
+
+async def issue_context(issue_ref: str) -> tuple[str, str]:
+    """(label, context-text) for the chat context-attach feature."""
+    _, issue, event = await _fetch_issue(issue_ref)
+    label = f"Sentry: {issue.get('title', '') or issue.get('shortId', '')}"
+    return label, _issue_context_text(issue, event)
+
+
+@router.post("/explain")
+async def explain_issue(
+    body: ExplainRequest,
+    user: CurrentUser = Depends(get_current_user),
+    settings: Settings = Depends(get_settings),
+):
+    """Fetch an issue's latest event and ask the LLM to explain + propose a fix."""
+    issue_id, issue, event = await _fetch_issue(body.issue)
     prompt = (
         "Aşağıdaki Sentry hatasını bir kıdemli yazılımcı gibi analiz et. "
         "Önce hatanın kök nedenini kısaca açıkla, ardından somut ve uygulanabilir "
         "bir çözüm öner (gerekiyorsa kod örneğiyle). Türkçe ve öz yanıtla.\n\n"
-        f"{context}"
+        f"{_issue_context_text(issue, event)}"
     )
     answer = await llm.quick_complete(user, prompt, settings)
     return {
