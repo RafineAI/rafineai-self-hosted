@@ -34,6 +34,54 @@ export interface OwnKey {
   created_at: string;
 }
 
+export interface Team {
+  id: string;
+  name: string;
+  description: string;
+  rate_limit_rpm: number | null;
+  daily_token_quota: number | null;
+  member_count: number;
+  provider_ids: string[];
+  created_at: string;
+}
+
+export interface TeamMember {
+  user_id: string;
+  email: string;
+  role_in_team: string;
+}
+
+export interface ConfigField {
+  key: string;
+  label: string;
+  secret: boolean;
+  placeholder?: string;
+  optional?: boolean;
+}
+
+export interface MarketplaceApp {
+  slug: string;
+  name: string;
+  category: string;
+  icon: string;
+  description: string;
+  config_fields: ConfigField[];
+  needs_config: boolean;
+  installed: boolean;
+  enabled: boolean;
+}
+
+export interface Document {
+  id: string;
+  filename: string;
+  mime_type: string;
+  size_bytes: number;
+  sha256: string;
+  indexed: boolean;
+  team_id: string | null;
+  created_at: string;
+}
+
 export interface Conversation {
   id: string;
   provider_id: string | null;

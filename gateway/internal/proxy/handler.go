@@ -4,9 +4,11 @@ package proxy
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -29,6 +31,26 @@ type Handler struct {
 	Client        *http.Client
 	Limiter       *ratelimit.Limiter
 	DefaultLimits ratelimit.Limits
+
+	// In-process counters exposed at /metrics (Prometheus text format).
+	mRequests atomic.Int64
+	mErrors   atomic.Int64
+	mTokens   atomic.Int64
+}
+
+// Metrics renders the in-process counters in Prometheus exposition format.
+func (h *Handler) Metrics(c echo.Context) error {
+	var b strings.Builder
+	fmt.Fprintf(&b, "# HELP rafine_requests_total Total chat requests handled.\n")
+	fmt.Fprintf(&b, "# TYPE rafine_requests_total counter\n")
+	fmt.Fprintf(&b, "rafine_requests_total %d\n", h.mRequests.Load())
+	fmt.Fprintf(&b, "# HELP rafine_errors_total Total requests that ended in an error status.\n")
+	fmt.Fprintf(&b, "# TYPE rafine_errors_total counter\n")
+	fmt.Fprintf(&b, "rafine_errors_total %d\n", h.mErrors.Load())
+	fmt.Fprintf(&b, "# HELP rafine_tokens_total Total prompt+completion tokens proxied.\n")
+	fmt.Fprintf(&b, "# TYPE rafine_tokens_total counter\n")
+	fmt.Fprintf(&b, "rafine_tokens_total %d\n", h.mTokens.Load())
+	return c.String(http.StatusOK, b.String())
 }
 
 // New builds a Handler with a sane default HTTP client and rate limiter.
@@ -55,8 +77,9 @@ func snippet(masked string) string {
 	return s
 }
 
-// limitsFor resolves a user's effective limits, applying per-user overrides on
-// top of the gateway defaults.
+// limitsFor resolves a user's effective limits. Precedence: a personal override
+// wins; otherwise the most restrictive limit among the user's teams; otherwise
+// the gateway default.
 func (h *Handler) limitsFor(snap *state.Snapshot, userID string) ratelimit.Limits {
 	lim := h.DefaultLimits
 	if ul, ok := snap.UserLimitFor(userID); ok {
@@ -65,6 +88,15 @@ func (h *Handler) limitsFor(snap *state.Snapshot, userID string) ratelimit.Limit
 		}
 		if ul.DailyTokens >= 0 {
 			lim.DailyTokens = ul.DailyTokens
+		}
+		return lim
+	}
+	if tl, ok := snap.TeamLimitFor(userID); ok {
+		if tl.RPM >= 0 {
+			lim.RPM = tl.RPM
+		}
+		if tl.DailyTokens >= 0 {
+			lim.DailyTokens = tl.DailyTokens
 		}
 	}
 	return lim
@@ -187,7 +219,7 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 	ctx := c.Request().Context()
 
 	if req.Stream {
-		return h.streamChat(c, adapter, p, credential, req, claims, appliedSet, start)
+		return h.streamChat(c, adapter, p, credential, req, claims, appliedSet, rules, snap.MaskResponses, start)
 	}
 
 	upstreamReq, err := adapter.BuildRequest(ctx, p, credential, req)
@@ -216,6 +248,20 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 		return jsonError(c, http.StatusBadGateway, "parse_error", err.Error())
 	}
 
+	// Response masking: redact sensitive spans in the assistant reply.
+	if snap.MaskResponses {
+		res := policy.ApplyResponse(parsed.Content, rules)
+		parsed.Content = res.Text
+		for _, f := range res.Findings {
+			appliedSet["resp:"+f.Rule] = struct{}{}
+			h.Alerts.Enqueue(alert.Entry{
+				UserID: claims.UserID, ConversationID: convID,
+				RuleName: "response:" + f.Rule, Category: f.Category, Action: f.Action,
+				Severity: f.Severity, Snippet: snippet(res.Text),
+			})
+		}
+	}
+
 	h.Limiter.AddTokens(claims.UserID, parsed.PromptTokens+parsed.CompletionTokens)
 	h.audit(claims, p, firstNonEmpty(req.Model, p.DefaultModel),
 		parsed.PromptTokens, parsed.CompletionTokens, http.StatusOK, appliedSet, c, "", start)
@@ -228,7 +274,7 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 // audits the captured usage at the end.
 func (h *Handler) streamChat(c echo.Context, adapter provider.Adapter, p state.Provider,
 	credential string, req provider.ChatRequest, claims signing.Claims,
-	appliedSet map[string]struct{}, start time.Time) error {
+	appliedSet map[string]struct{}, rules []*policy.Rule, maskResponses bool, start time.Time) error {
 
 	ctx := c.Request().Context()
 	model := firstNonEmpty(req.Model, p.DefaultModel)
@@ -281,9 +327,36 @@ func (h *Handler) streamChat(c echo.Context, adapter provider.Adapter, p state.P
 	// Initial role delta (OpenAI convention).
 	writeChunk(map[string]any{"role": "assistant"}, nil)
 
-	usage, decErr := adapter.DecodeStream(resp.Body, func(textDelta string) {
-		writeChunk(map[string]any{"content": textDelta}, nil)
-	})
+	emit := func(text string) {
+		if text != "" {
+			writeChunk(map[string]any{"content": text}, nil)
+		}
+	}
+
+	var usage provider.Usage
+	var decErr error
+	if maskResponses {
+		// Mask the reply as it streams, releasing redacted text on whitespace
+		// boundaries (sensitive tokens are contiguous, so never split).
+		masker := policy.NewStreamMasker(rules)
+		usage, decErr = adapter.DecodeStream(resp.Body, func(textDelta string) {
+			emit(masker.Push(textDelta))
+		})
+		emit(masker.Close())
+		for _, f := range masker.Findings() {
+			appliedSet["resp:"+f.Rule] = struct{}{}
+			h.Alerts.Enqueue(alert.Entry{
+				UserID:         claims.UserID,
+				ConversationID: c.Request().Header.Get("X-Rafine-Conversation"),
+				RuleName:       "response:" + f.Rule, Category: f.Category,
+				Action: f.Action, Severity: f.Severity, Snippet: "[response masked]",
+			})
+		}
+	} else {
+		usage, decErr = adapter.DecodeStream(resp.Body, func(textDelta string) {
+			emit(textDelta)
+		})
+	}
 
 	// Final stop chunk, then a usage-only chunk (OpenAI include_usage style),
 	// then the DONE sentinel.
@@ -321,6 +394,12 @@ func (h *Handler) streamChat(c echo.Context, adapter provider.Adapter, p state.P
 
 func (h *Handler) audit(claims signing.Claims, p state.Provider, model string,
 	promptTok, compTok, status int, appliedSet map[string]struct{}, c echo.Context, errMsg string, start time.Time) {
+
+	h.mRequests.Add(1)
+	h.mTokens.Add(int64(promptTok + compTok))
+	if status >= 400 {
+		h.mErrors.Add(1)
+	}
 
 	policies := make([]string, 0, len(appliedSet))
 	for k := range appliedSet {

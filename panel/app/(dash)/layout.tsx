@@ -9,10 +9,15 @@ import { useSettings } from "@/lib/settings-context";
 import type { User } from "@/lib/types";
 
 const ADMIN_NAV = [
+  { href: "/dashboard",     label: "Dashboard",      icon: "📊" },
   { href: "/providers",     label: "LLM Providers",  icon: "🔌" },
+  { href: "/teams",         label: "Teams",          icon: "🧑‍🤝‍🧑" },
   { href: "/users",         label: "Users",           icon: "👥" },
   { href: "/policy",        label: "Policy Rules",    icon: "🛡️" },
   { href: "/alerts",        label: "Alerts",          icon: "🔔" },
+  { href: "/documents",     label: "Belgelerim",      icon: "📁" },
+  { href: "/knowledge",     label: "Bilgi Tabanı",    icon: "📚" },
+  { href: "/marketplace",   label: "Marketplace",     icon: "🧩" },
   { href: "/conversations", label: "Chat Geçmişi",    icon: "📜" },
   { href: "/audit",         label: "Audit Logs",      icon: "📋" },
   { href: "/settings",      label: "Ayarlar",         icon: "⚙️" },

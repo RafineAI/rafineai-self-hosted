@@ -28,6 +28,48 @@ async def _own_key_types(user_id: str) -> set[str]:
     return {r["provider_type"] for r in rows}
 
 
+async def user_can_use_provider(user: CurrentUser, provider_id: str) -> bool:
+    """A provider is restricted once any team grants access to it. Admins always
+    pass; otherwise the user must belong to a granting team."""
+    if user.role in ("owner", "admin"):
+        return True
+    restricted = await db.pool().fetchval(
+        "SELECT EXISTS(SELECT 1 FROM team_provider_access WHERE provider_id = $1)",
+        provider_id,
+    )
+    if not restricted:
+        return True
+    return bool(await db.pool().fetchval(
+        """
+        SELECT EXISTS(
+            SELECT 1 FROM team_provider_access tpa
+            JOIN team_members tm ON tm.team_id = tpa.team_id
+            WHERE tpa.provider_id = $1 AND tm.user_id = $2
+        )
+        """,
+        provider_id, user.id,
+    ))
+
+
+async def _restricted_blocked_for(user: CurrentUser) -> set[str]:
+    """Provider ids the user may NOT use due to team restrictions (non-admins)."""
+    if user.role in ("owner", "admin"):
+        return set()
+    rows = await db.pool().fetch(
+        """
+        SELECT DISTINCT tpa.provider_id::text AS pid
+        FROM team_provider_access tpa
+        WHERE tpa.provider_id NOT IN (
+            SELECT tpa2.provider_id FROM team_provider_access tpa2
+            JOIN team_members tm ON tm.team_id = tpa2.team_id
+            WHERE tm.user_id = $1
+        )
+        """,
+        user.id,
+    )
+    return {r["pid"] for r in rows}
+
+
 @router.get("", response_model=list[ProviderOut])
 async def list_providers(user: CurrentUser = Depends(get_current_user)):
     rows = await db.pool().fetch(
@@ -39,7 +81,9 @@ async def list_providers(user: CurrentUser = Depends(get_current_user)):
         FROM llm_providers ORDER BY created_at
         """
     )
-    connected, own_keys = await _connected_set(user.id), await _own_key_types(user.id)
+    connected = await _connected_set(user.id)
+    own_keys = await _own_key_types(user.id)
+    blocked = await _restricted_blocked_for(user)
     return [
         ProviderOut(
             **dict(r),
@@ -47,6 +91,7 @@ async def list_providers(user: CurrentUser = Depends(get_current_user)):
             own_key=(r["type"] in own_keys),
         )
         for r in rows
+        if r["id"] not in blocked
     ]
 
 

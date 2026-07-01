@@ -17,6 +17,25 @@ released together as versioned container images.
 
 ---
 
+## Enterprise features (Phase 4)
+
+Beyond the core gateway + chat, RafineAI ships an enterprise feature set:
+
+| Feature | What it does |
+|---------|--------------|
+| 📁 **Document storage + preview** | Upload files to internal storage; inline preview for images/PDF/text/code. Pluggable backend (local volume, S3-ready). |
+| 🧑‍🤝‍🧑 **Teams** | Group users; set team-level RPM/token limits and per-provider access. The gateway enforces the most restrictive limit; provider access is checked at conversation creation. |
+| 📚 **RAG / NotebookLM** | Index documents (pgvector embeddings) and ask grounded questions; answers cite their source documents. |
+| 🛡️ **Response masking** | Mask sensitive data (TCKN, IBAN, cards, API keys) in the *model's reply* too — works mid-stream via a whitespace-boundary masker. Toggle on the Policy page. |
+| 📊 **Usage dashboard** | Requests, tokens, estimated cost, p95 latency, error rate; daily charts, model distribution, top users. Gateway also exposes Prometheus `/metrics`. |
+| 🧩 **Marketplace** | Install integrations with encrypted config: **GitHub** (browse/read repos), **Slack** (follow channels, read & post), **Sentry** (issues), **API Client** (Postman-like + "ask the LLM"), **Swagger/OpenAPI** (import endpoints), **Fine-tuning** (OpenAI jobs from a stored JSONL). |
+
+All new tables are added by idempotent migrations `0008`–`0014`. The Postgres
+image is `pgvector/pgvector:pg15` to support RAG. Document storage uses a
+`storage` volume mounted at `/data/storage`.
+
+---
+
 ## Architecture
 
 ```

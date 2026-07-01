@@ -5,7 +5,7 @@
 # ============================================================
 services:
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
@@ -47,8 +47,11 @@ services:
       OWNER_PASSWORD: ${OWNER_PASSWORD}
       GATEWAY_URL: http://gateway:8080
       RAFINE_PUBLIC_URL: ${RAFINE_PUBLIC_URL}
+      STORAGE_DIR: /data/storage
+      UPLOADS_DIR: /data/uploads
     volumes:
       - rafine_uploads:/data/uploads
+      - storage:/data/storage
     depends_on:
       postgres:
         condition: service_healthy
@@ -78,3 +81,4 @@ services:
 volumes:
   pgdata:
   rafine_uploads:
+  storage:
