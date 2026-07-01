@@ -1,0 +1,6 @@
+# Gateway build context (./gateway). Exclude local build output & VCS noise.
+.git
+*.log
+# Any locally-compiled binary (the image builds its own).
+/gateway
+/rafineai-gateway

@@ -1,0 +1,33 @@
+# Keep the Docker build context small & fast. Without this, panel/node_modules
+# (~350MB), panel/.next (~75MB) and api/.venv (~140MB) are sent to the daemon
+# on every build — the "transferring context" step hangs for minutes.
+
+# Version control
+.git
+.gitignore
+.github
+
+# Node / Next.js
+**/node_modules
+panel/.next
+panel/out
+**/*.tsbuildinfo
+
+# Python
+**/.venv
+**/__pycache__
+**/*.py[cod]
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+
+# Local env & secrets — never bake into an image (.env.example is kept)
+.env
+**/.env.local
+
+# Docs & captured screenshots — not needed to build or run
+docs/screenshots
+
+# Editor / OS noise
+.DS_Store
+**/*.log
