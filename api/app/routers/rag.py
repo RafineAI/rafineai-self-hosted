@@ -13,12 +13,25 @@ router = APIRouter(prefix="/api/rag", tags=["rag"])
 TOP_K = 6
 
 
+async def _require_vector() -> None:
+    """RAG needs pgvector + the document_chunks table (migration 0014). On a
+    stock Postgres these are absent; return a clear message instead of a 500."""
+    ok = await db.pool().fetchval("SELECT to_regclass('public.document_chunks') IS NOT NULL")
+    if not ok:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "RAG kullanılamıyor: pgvector kurulu değil. Postgres imajını "
+            "pgvector/pgvector:pg15 yapıp yeniden başlatın.",
+        )
+
+
 @router.post("/index/{document_id}")
 async def index_document(
     document_id: str,
     user: CurrentUser = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
 ):
+    await _require_vector()
     doc = await db.pool().fetchrow(
         "SELECT filename, mime_type, storage_key FROM documents "
         "WHERE id = $1 AND owner_id = $2",
@@ -56,6 +69,7 @@ async def ask(
     user: CurrentUser = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
 ):
+    await _require_vector()
     question = (body.get("question") or "").strip()
     if not question:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "soru gerekli")

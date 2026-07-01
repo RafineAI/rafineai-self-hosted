@@ -23,7 +23,9 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:15-alpine
+        # pgvector image so RAG migration 0014 can enable the extension
+        # (matches the production/dev compose Postgres image).
+        image: pgvector/pgvector:pg15
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
