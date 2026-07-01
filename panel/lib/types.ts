@@ -41,11 +41,20 @@ export interface Conversation {
   title: string;
 }
 
+export interface Attachment {
+  url: string;
+  filename: string;
+  content_type: string;
+  size: number;
+  text_content?: string;
+}
+
 export interface Message {
   id: string;
   role: string;
   content: string;
   tokens: number;
+  attachments?: Attachment[];
 }
 
 export interface PolicyRule {

@@ -44,9 +44,10 @@ func New(masterKey string, st *state.Store, aw *audit.Writer, al *alert.Writer, 
 	}
 }
 
-// snippet returns a short, already-masked excerpt safe to store in an alert.
+// snippet returns the full masked text, capped at 4000 chars to protect against
+// pathologically large messages filling the alerts table.
 func snippet(masked string) string {
-	const max = 160
+	const max = 4000
 	s := strings.TrimSpace(masked)
 	if len(s) > max {
 		return s[:max] + "…"
@@ -107,11 +108,8 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 	if !ok {
 		return jsonError(c, http.StatusBadRequest, "unknown_provider", "provider not configured")
 	}
-	if !p.Active {
-		return jsonError(c, http.StatusForbidden, "provider_disabled", "provider is disabled")
-	}
-
 	// Credential resolution: shared key → oauth2 token → user's own BYOK key.
+	// Resolve the credential first so we can check BYOK before enforcing is_active.
 	credential := p.APIKey
 	if p.AuthMode == "oauth2" {
 		if tok, found := snap.UserToken(claims.UserID, p.ID); found && tok != "" {
@@ -119,8 +117,15 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 		}
 	}
 	// BYOK: user's own API key always takes highest priority.
+	hasBYOK := false
 	if ownKey, ok := snap.UserOwnKey(claims.UserID, p.Type); ok && ownKey != "" {
 		credential = ownKey
+		hasBYOK = true
+	}
+	// Enforce is_active only when the user has no personal BYOK key — a disabled
+	// provider still works for users who bring their own credential.
+	if !p.Active && !hasBYOK {
+		return jsonError(c, http.StatusForbidden, "provider_disabled", "provider is disabled")
 	}
 	if credential == "" {
 		if p.AuthMode == "oauth2" {
@@ -200,8 +205,9 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 
 	if resp.StatusCode >= 400 {
 		h.audit(claims, p, req.Model, 0, 0, resp.StatusCode, appliedSet, c, string(body), start)
-		// Pass the upstream error through transparently.
-		return c.JSONBlob(resp.StatusCode, body)
+		return c.JSON(resp.StatusCode, map[string]any{
+			"error": map[string]any{"type": "upstream_error", "message": extractUpstreamMsg(body)},
+		})
 	}
 
 	parsed, err := adapter.ParseResponse(body)
@@ -241,7 +247,9 @@ func (h *Handler) streamChat(c echo.Context, adapter provider.Adapter, p state.P
 	if resp.StatusCode >= 400 {
 		body, _ := io.ReadAll(resp.Body)
 		h.audit(claims, p, model, 0, 0, resp.StatusCode, appliedSet, c, string(body), start)
-		return c.JSONBlob(resp.StatusCode, body)
+		return c.JSON(resp.StatusCode, map[string]any{
+			"error": map[string]any{"type": "upstream_error", "message": extractUpstreamMsg(body)},
+		})
 	}
 
 	// Switch the client connection into SSE mode.
@@ -351,6 +359,26 @@ func openAIResponse(model string, r provider.ChatResponse) map[string]any {
 			"total_tokens":      r.PromptTokens + r.CompletionTokens,
 		},
 	}
+}
+
+// extractUpstreamMsg pulls a human-readable message out of a raw upstream
+// error body, falling back to the raw text when parsing fails.
+func extractUpstreamMsg(body []byte) string {
+	var obj map[string]any
+	if json.Unmarshal(body, &obj) == nil {
+		if errObj, ok := obj["error"].(map[string]any); ok {
+			if msg, ok := errObj["message"].(string); ok && msg != "" {
+				return msg
+			}
+		}
+		if msg, ok := obj["message"].(string); ok && msg != "" {
+			return msg
+		}
+	}
+	if len(body) > 300 {
+		return string(body[:300])
+	}
+	return string(body)
 }
 
 func jsonError(c echo.Context, status int, code, msg string) error {

@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # Path to SQL migrations (relative to repo root inside the container)
     migrations_dir: str = "db/migrations"
 
+    # Directory for uploaded files
+    uploads_dir: str = "/data/uploads"
+
 
 _settings: Settings | None = None
 

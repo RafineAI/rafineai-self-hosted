@@ -4,13 +4,17 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import type { Provider } from "@/lib/types";
 
-const TYPES = ["openai", "anthropic", "gemini"];
+const PRESETS: Record<string, { name: string; default_model: string; light_model: string; heavy_model: string }> = {
+  openai:    { name: "OpenAI",    default_model: "gpt-4o",                          light_model: "gpt-4o-mini",              heavy_model: "gpt-4o" },
+  anthropic: { name: "Anthropic", default_model: "claude-sonnet-4-6",               light_model: "claude-haiku-4-5-20251001", heavy_model: "claude-opus-4-8" },
+  gemini:    { name: "Gemini",    default_model: "gemini-2.0-flash",                light_model: "gemini-2.0-flash-lite",    heavy_model: "gemini-2.5-pro" },
+};
 
 export default function ProvidersPage() {
   const [providers, setProviders] = useState<Provider[]>([]);
   const [error, setError] = useState("");
   const [form, setForm] = useState({
-    name: "",
+    name: PRESETS.openai.name,
     type: "openai",
     auth_mode: "api_key",
     api_key: "",
@@ -20,9 +24,9 @@ export default function ProvidersPage() {
     oauth_token_url: "",
     oauth_scopes: "",
     base_url: "",
-    default_model: "",
-    light_model: "",
-    heavy_model: "",
+    default_model: PRESETS.openai.default_model,
+    light_model: PRESETS.openai.light_model,
+    heavy_model: PRESETS.openai.heavy_model,
     route_threshold_tokens: "",
   });
 
@@ -34,6 +38,18 @@ export default function ProvidersPage() {
   }, []);
 
   function set<K extends keyof typeof form>(k: K, v: string) {
+    if (k === "type") {
+      const preset = PRESETS[v] ?? PRESETS.openai;
+      setForm((f) => ({
+        ...f,
+        type: v,
+        name: f.name === PRESETS[f.type]?.name ? preset.name : f.name,
+        default_model: f.default_model === PRESETS[f.type]?.default_model ? preset.default_model : f.default_model,
+        light_model: f.light_model === PRESETS[f.type]?.light_model ? preset.light_model : f.light_model,
+        heavy_model: f.heavy_model === PRESETS[f.type]?.heavy_model ? preset.heavy_model : f.heavy_model,
+      }));
+      return;
+    }
     setForm((f) => ({ ...f, [k]: v }));
   }
 
@@ -63,9 +79,15 @@ export default function ProvidersPage() {
     }
     try {
       await api("/api/providers", { method: "POST", body: JSON.stringify(payload) });
+      const preset = PRESETS[form.type] ?? PRESETS.openai;
       setForm({
-        ...form, name: "", api_key: "", default_model: "",
-        light_model: "", heavy_model: "", route_threshold_tokens: "",
+        ...form,
+        name: preset.name,
+        api_key: "",
+        default_model: preset.default_model,
+        light_model: preset.light_model,
+        heavy_model: preset.heavy_model,
+        route_threshold_tokens: "",
       });
       refresh();
     } catch (e: any) {
@@ -92,26 +114,23 @@ export default function ProvidersPage() {
 
       <form onSubmit={create} className="card mb-8 space-y-4 p-5">
         <div className="grid grid-cols-2 gap-4">
+          <Field label="Type">
+            <select className="input" value={form.type} onChange={(e) => set("type", e.target.value)}>
+              {Object.keys(PRESETS).map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </Field>
           <Field label="Name">
             <input className="input" value={form.name} onChange={(e) => set("name", e.target.value)} required />
           </Field>
           <Field label="Default model">
             <input
               className="input"
-              placeholder="e.g. gpt-4o"
               value={form.default_model}
               onChange={(e) => set("default_model", e.target.value)}
               required
             />
-          </Field>
-          <Field label="Type">
-            <select className="input" value={form.type} onChange={(e) => set("type", e.target.value)}>
-              {TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
-                </option>
-              ))}
-            </select>
           </Field>
           <Field label="Auth mode">
             <select
