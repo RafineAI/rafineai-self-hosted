@@ -4,7 +4,7 @@
 # ============================================================
 services:
   postgres:
-    image: postgres:15-alpine
+    image: pgvector/pgvector:pg15
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -47,8 +47,11 @@ services:
       OWNER_PASSWORD: ${OWNER_PASSWORD}
       GATEWAY_URL: http://gateway:8080
       RAFINE_PUBLIC_URL: ${RAFINE_PUBLIC_URL}
+      STORAGE_DIR: /data/storage
     ports:
       - "8000:8000"
+    volumes:
+      - storage_dev:/data/storage
     depends_on:
       postgres:
         condition: service_healthy
@@ -77,3 +80,4 @@ services:
 
 volumes:
   pgdata_dev:
+  storage_dev:

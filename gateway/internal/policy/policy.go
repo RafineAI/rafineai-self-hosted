@@ -64,6 +64,96 @@ func NewKeywordRule(name, category, action, severity, keyword string) *Rule {
 	return NewRegexRule(name, category, action, severity, pat)
 }
 
+// ApplyResponse masks/flags the assistant reply. Unlike Apply, a block action
+// is downgraded to a mask: we never withhold an already-generated answer, we
+// only redact sensitive spans inside it.
+func ApplyResponse(text string, rules []*Rule) Result {
+	res := Result{Text: text}
+	seen := map[string]bool{}
+	for _, r := range rules {
+		if r == nil || r.re == nil || !r.re.MatchString(res.Text) {
+			continue
+		}
+		if !seen[r.Name] {
+			res.Findings = append(res.Findings, Finding{
+				Rule: r.Name, Category: r.Category, Action: r.Action, Severity: r.Severity,
+			})
+			seen[r.Name] = true
+		}
+		if r.Action == ActionMask || r.Action == ActionBlock {
+			res.Text = r.re.ReplaceAllString(res.Text, MaskToken)
+		}
+	}
+	return res
+}
+
+// StreamMasker masks an assistant reply as it streams. It releases text on
+// whitespace boundaries so that contiguous sensitive tokens (TCKN, IBAN, card
+// numbers, API keys — none of which contain spaces) are always fully buffered
+// before masking, then emitted redacted. Text held across a chunk boundary is
+// flushed on Close.
+type StreamMasker struct {
+	rules    []*Rule
+	buf      strings.Builder
+	findings map[string]Finding
+}
+
+// NewStreamMasker builds a masker for the given rules.
+func NewStreamMasker(rules []*Rule) *StreamMasker {
+	return &StreamMasker{rules: rules, findings: map[string]Finding{}}
+}
+
+// Push feeds the next delta and returns any text now safe to emit (masked).
+func (m *StreamMasker) Push(delta string) string {
+	m.buf.WriteString(delta)
+	s := m.buf.String()
+	idx := strings.LastIndexAny(s, " \t\n\r")
+	if idx < 0 {
+		return "" // no whitespace yet: keep buffering
+	}
+	segment := s[:idx+1]
+	remainder := s[idx+1:]
+	m.buf.Reset()
+	m.buf.WriteString(remainder)
+	return m.mask(segment)
+}
+
+// Close masks and returns whatever remains buffered.
+func (m *StreamMasker) Close() string {
+	s := m.buf.String()
+	m.buf.Reset()
+	if s == "" {
+		return ""
+	}
+	return m.mask(s)
+}
+
+// Findings returns the distinct rules that fired during the stream.
+func (m *StreamMasker) Findings() []Finding {
+	out := make([]Finding, 0, len(m.findings))
+	for _, f := range m.findings {
+		out = append(out, f)
+	}
+	return out
+}
+
+func (m *StreamMasker) mask(text string) string {
+	for _, r := range m.rules {
+		if r == nil || r.re == nil || !r.re.MatchString(text) {
+			continue
+		}
+		if _, ok := m.findings[r.Name]; !ok {
+			m.findings[r.Name] = Finding{
+				Rule: r.Name, Category: r.Category, Action: r.Action, Severity: r.Severity,
+			}
+		}
+		if r.Action == ActionMask || r.Action == ActionBlock {
+			text = r.re.ReplaceAllString(text, MaskToken)
+		}
+	}
+	return text
+}
+
 // Apply runs the given rules over text, masking/flagging as configured.
 func Apply(text string, rules []*Rule) Result {
 	res := Result{Text: text}

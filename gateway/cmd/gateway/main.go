@@ -94,6 +94,7 @@ func main() {
 	e.GET("/healthz", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, map[string]string{"status": "ok"})
 	})
+	e.GET("/metrics", h.Metrics)
 	e.POST("/v1/chat/completions", h.ChatCompletions)
 
 	go func() {

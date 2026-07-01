@@ -48,9 +48,59 @@ type Snapshot struct {
 	Blocked map[string]struct{}
 	// UserLimits holds per-user rate/quota overrides by user id.
 	UserLimits map[string]UserLimit
+	// TeamLimits holds per-team rate/quota limits by team id.
+	TeamLimits map[string]UserLimit
+	// UserTeams maps a user id to the team ids they belong to.
+	UserTeams map[string][]string
 	// Rules holds compiled admin-defined custom policy rules (applied in
 	// addition to the gateway's built-in detectors).
 	Rules []*policy.Rule
+	// MaskResponses enables masking of assistant replies (default true).
+	MaskResponses bool
+}
+
+// TeamLimitFor resolves the most restrictive (lowest positive) limit among the
+// user's teams. A 0 value means unlimited and never lowers the effective cap.
+// Returns false when the user belongs to no team that sets a limit.
+func (s *Snapshot) TeamLimitFor(userID string) (UserLimit, bool) {
+	teams := s.UserTeams[userID]
+	if len(teams) == 0 {
+		return UserLimit{}, false
+	}
+	out := UserLimit{RPM: -1, DailyTokens: -1}
+	found := false
+	for _, tid := range teams {
+		tl, ok := s.TeamLimits[tid]
+		if !ok {
+			continue
+		}
+		found = true
+		out.RPM = mostRestrictive(out.RPM, tl.RPM)
+		out.DailyTokens = mostRestrictive(out.DailyTokens, tl.DailyTokens)
+	}
+	return out, found
+}
+
+// mostRestrictive picks the tighter of two caps where -1 means "unset" and 0
+// means "unlimited". A positive value is tighter than unlimited; the smaller
+// positive value wins.
+func mostRestrictive(cur, next int) int {
+	if next < 0 {
+		return cur // unset team value: ignore
+	}
+	if cur < 0 {
+		return next // first concrete value
+	}
+	if cur == 0 {
+		return next // unlimited so far: any concrete value is tighter
+	}
+	if next == 0 {
+		return cur // keep current concrete cap over unlimited
+	}
+	if next < cur {
+		return next
+	}
+	return cur
 }
 
 // UserLimitFor returns the user's limit override and whether one exists.
@@ -115,5 +165,7 @@ func emptySnapshot() *Snapshot {
 		UserOwnKeys: map[string]string{},
 		Blocked:     map[string]struct{}{},
 		UserLimits:  map[string]UserLimit{},
+		TeamLimits:  map[string]UserLimit{},
+		UserTeams:   map[string][]string{},
 	}
 }

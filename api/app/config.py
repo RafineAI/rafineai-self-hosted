@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     # Path to SQL migrations (relative to repo root inside the container)
     migrations_dir: str = "db/migrations"
 
+    # Local file storage root (mounted volume in production).
+    storage_dir: str = "/data/storage"
+    # Maximum upload size in bytes (default 25 MB, matches nginx client_max_body_size).
+    max_upload_bytes: int = 25 * 1024 * 1024
+
 
 _settings: Settings | None = None
 

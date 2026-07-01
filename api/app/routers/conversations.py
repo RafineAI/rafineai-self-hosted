@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 from .. import db, signing
 from ..config import Settings, get_settings
 from ..deps import CurrentUser, get_current_user
+from . import providers as providers_router
 from ..schemas import (
     ChatReply,
     ChatRequest,
@@ -53,6 +54,11 @@ async def create_conversation(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "unknown provider")
     if not provider["is_active"]:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "provider is disabled")
+    if not await providers_router.user_can_use_provider(user, body.provider_id):
+        raise HTTPException(
+            status.HTTP_403_FORBIDDEN,
+            "bu sağlayıcıya takımınızın erişim yetkisi yok",
+        )
     model = body.model or provider["default_model"]
     row = await db.pool().fetchrow(
         """
