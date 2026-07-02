@@ -81,13 +81,13 @@ export default function DashLayout({ children }: { children: React.ReactNode }) 
   return (
     <div className="flex min-h-screen dark:bg-slate-950">
       <aside
-        className={`relative flex flex-col border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 transition-all duration-200 ${
+        className={`relative z-10 flex flex-col border-r border-slate-200 dark:border-white/10 bg-white/90 dark:bg-slate-900/50 dark:backdrop-blur-xl transition-all duration-200 ${
           open ? "w-56" : "w-14"
         }`}
       >
         {/* Logo + toggle */}
-        <div className="flex items-center border-b border-slate-200 dark:border-slate-700 px-3 py-4">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-brand text-sm font-bold text-white overflow-hidden">
+        <div className="flex items-center border-b border-slate-200 dark:border-white/10 px-3 py-4">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-brand to-cyan-accent text-sm font-bold text-white overflow-hidden dark:shadow-glow">
             {s.app_logo_url ? (
               <img src={s.app_logo_url} alt={s.app_name} className="h-full w-full object-cover" />
             ) : (
@@ -120,7 +120,7 @@ export default function DashLayout({ children }: { children: React.ReactNode }) 
             title={!open ? "Chat" : undefined}
             className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition ${
               pathname.startsWith("/chat")
-                ? "bg-brand text-white shadow-sm"
+                ? "bg-brand/15 text-brand dark:text-brand ring-1 ring-inset ring-brand/30"
                 : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
             } ${!open ? "justify-center" : ""}`}
           >
@@ -140,7 +140,7 @@ export default function DashLayout({ children }: { children: React.ReactNode }) 
                 title={!open ? n.label : undefined}
                 className={`flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm font-medium transition ${
                   active
-                    ? "bg-brand text-white shadow-sm"
+                    ? "bg-brand/15 text-brand dark:text-brand ring-1 ring-inset ring-brand/30"
                     : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
                 } ${!open ? "justify-center" : ""}`}
               >
@@ -184,7 +184,7 @@ export default function DashLayout({ children }: { children: React.ReactNode }) 
         </div>
       </aside>
 
-      <main className="flex-1 overflow-hidden bg-slate-50 dark:bg-slate-950">{children}</main>
+      <main className="grid-bg flex-1 overflow-hidden bg-slate-50 dark:bg-transparent">{children}</main>
     </div>
   );
 }
