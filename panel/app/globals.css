@@ -2,46 +2,105 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Theme color variables (RGB triples for Tailwind opacity support) ─── */
+/* ══════════════════════════════════════════════════════════════════════
+   RafineAI design system
+   • Admin  → futuristic control-center: glass panels, grid, neon accents
+   • Chat   → simple, familiar (ChatGPT-like), stays calm
+   Token-driven: --brand (primary, RGB triple) + accent/semantic tokens.
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Brand presets (primary hue) ─────────────────────────────────────── */
 :root,
 [data-theme="default"] {
-  --brand:      79 70 229;
-  --brand-dark: 67 56 202;
+  --brand:      124 92 252;   /* violet — futuristic, good white contrast */
+  --brand-dark: 108 74 240;
 }
-[data-theme="ocean"] {
-  --brand:      8 145 178;
-  --brand-dark: 14 116 144;
+[data-theme="ocean"]  { --brand: 8 145 178;   --brand-dark: 14 116 144; }
+[data-theme="forest"] { --brand: 22 163 74;   --brand-dark: 21 128 61; }
+[data-theme="sunset"] { --brand: 249 115 22;  --brand-dark: 234 88 12; }
+[data-theme="rose"]   { --brand: 225 29 72;   --brand-dark: 190 18 60; }
+
+/* ── Shared accent + semantic tokens (light) ─────────────────────────── */
+:root {
+  --accent-cyan:   12 154 176;   /* data / glow accent */
+  --accent-violet: 124 92 252;
+  --good: 21 155 110;
+  --warn: 181 130 14;
+  --crit: 200 71 61;
+  --grid-line: 99 102 241;       /* used at low alpha */
 }
-[data-theme="forest"] {
-  --brand:      22 163 74;
-  --brand-dark: 21 128 61;
-}
-[data-theme="sunset"] {
-  --brand:      249 115 22;
-  --brand-dark: 234 88 12;
-}
-[data-theme="rose"] {
-  --brand:      225 29 72;
-  --brand-dark: 190 18 60;
+.dark {
+  --accent-cyan:   45 220 220;
+  --accent-violet: 157 130 255;
+  --good: 63 224 160;
+  --warn: 255 194 75;
+  --crit: 255 107 138;
+  --grid-line: 255 255 255;
 }
 
-/* ── Light mode base ─────────────────────────────────────────────────── */
+/* ── Base surfaces ───────────────────────────────────────────────────── */
 body {
   @apply bg-slate-100 text-slate-900 antialiased;
 }
-
-/* ── Dark mode base ──────────────────────────────────────────────────── */
-html.dark {
-  color-scheme: dark;
-}
+html.dark { color-scheme: dark; }
 .dark body {
-  @apply bg-slate-950 text-slate-100;
+  @apply text-slate-100;
+  /* deep space gradient — the futuristic ground for the admin shell */
+  background:
+    radial-gradient(120% 120% at 12% -10%, #0f0a26 0%, #0a0c16 45%, #07080f 100%);
+  background-attachment: fixed;
+}
+
+/* ── Futuristic building blocks ──────────────────────────────────────── */
+@layer components {
+  /* faint control-panel grid, fading from the top-left */
+  .grid-bg { position: relative; }
+  .grid-bg::before {
+    content: "";
+    position: absolute; inset: 0; z-index: 0; pointer-events: none;
+    background-image:
+      linear-gradient(rgb(var(--grid-line) / 0.05) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(var(--grid-line) / 0.05) 1px, transparent 1px);
+    background-size: 32px 32px;
+    -webkit-mask: radial-gradient(120% 90% at 28% 0%, #000 28%, transparent 82%);
+            mask: radial-gradient(120% 90% at 28% 0%, #000 28%, transparent 82%);
+  }
+  .grid-bg > * { position: relative; z-index: 1; }
+
+  /* frosted glass panel — the admin's primary surface */
+  .glass {
+    @apply rounded-2xl border;
+    border-color: rgb(148 163 184 / 0.22);
+    background: rgb(255 255 255 / 0.72);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+  }
+  .dark .glass {
+    border-color: rgb(255 255 255 / 0.08);
+    background: rgb(24 28 48 / 0.55);
+  }
+
+  /* KPI tile — glass + soft accent glow */
+  .kpi {
+    @apply glass p-4 relative overflow-hidden;
+  }
+  .dark .kpi { box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.04); }
+
+  /* neon-ish accent glow, used sparingly on hero marks / active states */
+  .glow-brand { box-shadow: 0 0 18px rgb(var(--brand) / 0.55); }
+  .glow-cyan  { box-shadow: 0 0 16px rgb(var(--accent-cyan) / 0.6); }
+
+  /* status pills for the live policy feed */
+  .pill { @apply inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold; }
+  .pill-good { color: rgb(var(--good)); background: rgb(var(--good) / 0.15); }
+  .pill-warn { color: rgb(var(--warn)); background: rgb(var(--warn) / 0.16); }
+  .pill-crit { color: rgb(var(--crit)); background: rgb(var(--crit) / 0.15); }
 }
 
 /* ── Component defaults ──────────────────────────────────────────────── */
 @layer components {
   .btn {
-    @apply inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-dark focus:outline-none focus:ring-2 focus:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex items-center justify-center gap-1.5 rounded-lg bg-brand px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-brand-dark hover:shadow-[0_6px_20px_-6px_rgb(var(--brand)/0.6)] focus:outline-none focus:ring-2 focus:ring-brand/40 disabled:cursor-not-allowed disabled:opacity-50;
   }
 
   .btn-ghost {
@@ -52,6 +111,7 @@ html.dark {
     @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none transition placeholder:text-slate-400 focus:border-brand focus:ring-2 focus:ring-brand/30;
   }
 
+  /* card = solid content surface (data-heavy pages); glass = admin hero panels */
   .card {
     @apply rounded-xl border border-slate-200 bg-white shadow-sm;
   }
@@ -65,15 +125,15 @@ html.dark {
   }
 }
 
-/* ── Dark mode component overrides ──────────────────────────────────── */
+/* ── Dark-mode component overrides ──────────────────────────────────── */
 .dark .btn-ghost {
-  @apply border-slate-600 bg-slate-800 text-slate-300 hover:bg-slate-700 hover:text-slate-100;
+  @apply border-slate-600 bg-slate-800/70 text-slate-300 hover:bg-slate-700 hover:text-slate-100;
 }
 .dark .input {
-  @apply border-slate-600 bg-slate-800 text-slate-100 placeholder:text-slate-500;
+  @apply border-slate-600 bg-slate-800/70 text-slate-100 placeholder:text-slate-500;
 }
 .dark .card {
-  @apply border-slate-700 bg-slate-800;
+  @apply border-white/10 bg-slate-800/60 backdrop-blur;
 }
 .dark .page-title {
   @apply text-slate-100;
@@ -87,4 +147,8 @@ html.dark {
 }
 @keyframes blink {
   to { visibility: hidden; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caret::after { animation: none; }
 }

@@ -17,11 +17,11 @@ interface TsPoint { day: string; requests: number; tokens: number }
 interface ModelRow { model: string; requests: number; tokens: number; estimated_cost_usd: number }
 interface UserRow { email: string; requests: number; tokens: number }
 
-function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
+function Stat({ label, value, sub, accent }: { label: string; value: string; sub?: string; accent?: boolean }) {
   return (
-    <div className="card p-5">
-      <p className="text-xs uppercase tracking-wide text-slate-400">{label}</p>
-      <p className="mt-1 text-2xl font-bold text-slate-800">{value}</p>
+    <div className="kpi">
+      <p className="text-[11px] uppercase tracking-wider text-slate-400">{label}</p>
+      <p className={`mt-1 text-2xl font-bold tabular-nums ${accent ? "text-brand" : "text-slate-800 dark:text-slate-100"}`}>{value}</p>
       {sub && <p className="text-xs text-slate-400">{sub}</p>}
     </div>
   );
@@ -75,19 +75,19 @@ export default function DashboardPage() {
       </div>
 
       <div className="mb-6 grid gap-4 lg:grid-cols-2">
-        <div className="card p-5">
-          <LineChart label="Günlük istek" color="#4f46e5" data={ts.map((p) => ({ x: p.day, y: p.requests }))} />
+        <div className="glass p-5">
+          <LineChart label="Günlük istek" color="#7c5cfc" data={ts.map((p) => ({ x: p.day, y: p.requests }))} />
         </div>
-        <div className="card p-5">
-          <LineChart label="Günlük token" color="#0ea5e9" data={ts.map((p) => ({ x: p.day, y: p.tokens }))} />
+        <div className="glass p-5">
+          <LineChart label="Günlük token" color="#22d3d3" data={ts.map((p) => ({ x: p.day, y: p.tokens }))} />
         </div>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="card p-5">
+        <div className="glass p-5">
           <Donut label="Model dağılımı (istek)" data={models.map((m) => ({ name: m.model, value: m.requests }))} />
         </div>
-        <div className="card p-5">
+        <div className="glass p-5">
           <BarChart label="En çok kullanan kullanıcılar (token)" data={usersTop.map((u) => ({ name: u.email, value: u.tokens }))} />
         </div>
       </div>

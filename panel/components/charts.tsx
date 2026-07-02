@@ -29,9 +29,9 @@ export function LineChart({
 
   return (
     <div className="w-full overflow-x-auto">
-      {label && <p className="mb-1 text-sm font-medium text-slate-600">{label}</p>}
+      {label && <p className="mb-1 text-sm font-medium text-slate-600 dark:text-slate-300">{label}</p>}
       <svg viewBox={`0 0 ${w} ${height}`} className="w-full" style={{ minWidth: 320 }}>
-        <line x1={pad} y1={height - pad} x2={w - pad} y2={height - pad} stroke="#e2e8f0" />
+        <line x1={pad} y1={height - pad} x2={w - pad} y2={height - pad} className="stroke-slate-200 dark:stroke-slate-700" />
         {data.length > 0 && (
           <>
             <path d={area} fill={color} opacity={0.08} />
@@ -63,19 +63,19 @@ export function BarChart({
   const max = Math.max(1, ...data.map((d) => d.value));
   return (
     <div className="w-full">
-      {label && <p className="mb-2 text-sm font-medium text-slate-600">{label}</p>}
+      {label && <p className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">{label}</p>}
       <div className="space-y-2">
         {data.length === 0 && <p className="text-sm text-slate-400">veri yok</p>}
         {data.map((d, i) => (
           <div key={d.name} className="flex items-center gap-2">
-            <span className="w-40 shrink-0 truncate text-xs text-slate-500" title={d.name}>{d.name}</span>
-            <div className="h-5 flex-1 rounded bg-slate-100">
+            <span className="w-40 shrink-0 truncate text-xs text-slate-500 dark:text-slate-400" title={d.name}>{d.name}</span>
+            <div className="h-5 flex-1 rounded bg-slate-100 dark:bg-slate-700/50">
               <div
                 className="h-5 rounded"
                 style={{ width: `${(d.value / max) * 100}%`, background: PALETTE[i % PALETTE.length] }}
               />
             </div>
-            <span className="w-20 shrink-0 text-right text-xs tabular-nums text-slate-600">
+            <span className="w-20 shrink-0 text-right text-xs tabular-nums text-slate-600 dark:text-slate-300">
               {d.value.toLocaleString("tr-TR")}
             </span>
           </div>
@@ -98,7 +98,7 @@ export function Donut({
   let offset = 0;
   return (
     <div className="w-full">
-      {label && <p className="mb-2 text-sm font-medium text-slate-600">{label}</p>}
+      {label && <p className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">{label}</p>}
       <div className="flex items-center gap-6">
         <svg viewBox="0 0 160 160" width={150} height={150}>
           <g transform="translate(80,80) rotate(-90)">
@@ -125,7 +125,7 @@ export function Donut({
           {data.map((d, i) => (
             <div key={d.name} className="flex items-center gap-2 text-sm">
               <span className="h-3 w-3 rounded-sm" style={{ background: PALETTE[i % PALETTE.length] }} />
-              <span className="text-slate-600">{d.name}</span>
+              <span className="text-slate-600 dark:text-slate-300">{d.name}</span>
               <span className="text-slate-400">({Math.round((d.value / total) * 100)}%)</span>
             </div>
           ))}
