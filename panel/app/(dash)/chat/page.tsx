@@ -22,12 +22,18 @@ function parseMessageContent(content: string): { text: string; attachments: Atta
   return { text, attachments };
 }
 
-// Marketplace tools that can inject context into a chat, with a per-source hint.
+// Sources that can inject context into a chat, with a per-source hint.
+// "web" is always available (no install needed); the rest come from installed
+// marketplace tools.
 const CONTEXT_SOURCES: Record<string, string> = {
+  web: "Sayfa adresi (https://…)",
   sentry: "Sentry issue linki veya id",
   github: "GitHub dosya linki veya owner/repo/yol",
   slack: "Slack kanal id (Cxxx) veya #kanal",
 };
+
+// Always-on web-read source (governed, SSRF-guarded on the server).
+const WEB_SOURCE = { slug: "web", name: "Web sayfası", icon: "🌐" };
 
 export default function ChatPage() {
   const router = useRouter();
@@ -83,13 +89,14 @@ export default function ChatPage() {
     // Which installed+enabled integrations can be attached as chat context.
     api<{ slug: string; name: string; icon: string; installed: boolean; enabled: boolean }[]>("/api/marketplace")
       .then((apps) =>
-        setCtxSources(
-          apps
+        setCtxSources([
+          WEB_SOURCE,
+          ...apps
             .filter((a) => a.installed && a.enabled && a.slug in CONTEXT_SOURCES)
             .map((a) => ({ slug: a.slug, name: a.name, icon: a.icon })),
-        ),
+        ]),
       )
-      .catch(() => {});
+      .catch(() => setCtxSources([WEB_SOURCE]));
   }, []);
 
   // Close the context menu on outside click.
@@ -593,7 +600,7 @@ export default function ChatPage() {
                   type="button"
                   onClick={() => setCtxMenuOpen((v) => !v)}
                   disabled={sending}
-                  title="Bağlam ekle (Sentry / GitHub / Slack)"
+                  title="Bağlam ekle (Web / Sentry / GitHub / Slack)"
                   className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-300 transition disabled:opacity-40 text-base"
                 >
                   🧩

@@ -14,14 +14,14 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from ..deps import CurrentUser, get_current_user
-from . import github, sentry, slack
+from . import github, sentry, slack, web
 
 router = APIRouter(prefix="/api/tools", tags=["context"])
 
 
 class ContextRequest(BaseModel):
-    source: str   # 'sentry' | 'github' | 'slack'
-    ref: str      # issue link/id, github file link/path, or slack channel
+    source: str   # 'web' | 'sentry' | 'github' | 'slack'
+    ref: str      # url, issue link/id, github file link/path, or slack channel
 
 
 @router.post("/context")
@@ -29,7 +29,9 @@ async def fetch_context(body: ContextRequest, _: CurrentUser = Depends(get_curre
     ref = body.ref.strip()
     if not ref:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "bir referans girin")
-    if body.source == "sentry":
+    if body.source == "web":
+        label, text = await web.page_context(ref)
+    elif body.source == "sentry":
         label, text = await sentry.issue_context(ref)
     elif body.source == "github":
         label, text = await github.file_context(ref)
