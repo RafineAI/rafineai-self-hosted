@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { api, uploadFile, streamChat, clearSession, getRole } from "@/lib/api";
+import { MessageContent } from "@/components/message-content";
 import { toggleDark, getDark } from "@/lib/theme-bootstrap";
 import { useSettings } from "@/lib/settings-context";
 import type { Attachment, Conversation, Message, Provider } from "@/lib/types";
@@ -462,7 +463,9 @@ export default function ChatPage() {
                         : "border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
                     } ${streaming && !m.content ? "caret" : ""}`}
                   >
-                    {text && <span className="whitespace-pre-wrap">{text}</span>}
+                    {text && (m.role === "user"
+                      ? <span className="whitespace-pre-wrap">{text}</span>
+                      : <MessageContent text={text} />)}
                     {atts.length > 0 && (
                       <div className={`flex flex-wrap gap-2 ${text ? "mt-2 pt-2 border-t border-white/20" : ""}`}>
                         {atts.map((a, ai) =>
