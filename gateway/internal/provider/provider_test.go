@@ -56,6 +56,55 @@ func TestOpenAIParse(t *testing.T) {
 	}
 }
 
+func TestOpenAIForwardsToolsNonStreamingOnly(t *testing.T) {
+	p := state.Provider{Type: "openai", AuthMode: "api_key", DefaultModel: "gpt-4o"}
+	req := sampleReq()
+	req.Tools = json.RawMessage(`[{"type":"function","function":{"name":"get_weather"}}]`)
+	req.ToolChoice = json.RawMessage(`"auto"`)
+
+	// Non-streaming: tools + tool_choice forwarded verbatim.
+	r, err := For("openai").BuildRequest(context.Background(), p, "sk", req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, _ := io.ReadAll(r.Body)
+	var parsed map[string]any
+	json.Unmarshal(body, &parsed)
+	if _, ok := parsed["tools"]; !ok {
+		t.Fatal("expected tools forwarded on non-streaming request")
+	}
+	if parsed["tool_choice"] != "auto" {
+		t.Fatalf("expected tool_choice forwarded, got %v", parsed["tool_choice"])
+	}
+
+	// Streaming: tools omitted (no streaming tool-call handling yet).
+	rs, err := For("openai").BuildStreamRequest(context.Background(), p, "sk", req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sbody, _ := io.ReadAll(rs.Body)
+	var sparsed map[string]any
+	json.Unmarshal(sbody, &sparsed)
+	if _, ok := sparsed["tools"]; ok {
+		t.Fatal("tools must not be forwarded on the streaming path")
+	}
+}
+
+func TestOpenAIParseToolCalls(t *testing.T) {
+	body := `{"choices":[{"message":{"content":"","tool_calls":[{"id":"call_1","type":"function","function":{"name":"get_weather","arguments":"{}"}}]},"finish_reason":"tool_calls"}],"usage":{"prompt_tokens":9,"completion_tokens":4}}`
+	resp, err := For("openai").ParseResponse([]byte(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.FinishReason != "tool_calls" {
+		t.Fatalf("expected finish_reason tool_calls, got %q", resp.FinishReason)
+	}
+	var tc []map[string]any
+	if err := json.Unmarshal(resp.ToolCalls, &tc); err != nil || len(tc) != 1 {
+		t.Fatalf("tool_calls not captured/valid: %v", err)
+	}
+}
+
 func TestAnthropicSplitsSystemAndUsesApiKeyHeader(t *testing.T) {
 	p := state.Provider{Type: "anthropic", AuthMode: "api_key", DefaultModel: "claude-3-5-sonnet"}
 	req, err := For("anthropic").BuildRequest(context.Background(), p, "ak-test", sampleReq())

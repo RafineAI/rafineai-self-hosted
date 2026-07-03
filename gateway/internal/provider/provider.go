@@ -7,30 +7,43 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 
 	"github.com/rafineai/rafineai-self-hosted/gateway/internal/state"
 )
 
-// Message is a single chat message.
+// Message is a single chat message. Tool-calling fields are optional and carry
+// OpenAI-shaped tool call requests (assistant, ToolCalls) and results (role
+// "tool", ToolCallID/Name) verbatim, so multi-turn tool conversations round-trip.
 type Message struct {
-	Role    string `json:"role"`
-	Content string `json:"content"`
+	Role       string          `json:"role"`
+	Content    string          `json:"content"`
+	Name       string          `json:"name,omitempty"`
+	ToolCallID string          `json:"tool_call_id,omitempty"`
+	ToolCalls  json.RawMessage `json:"tool_calls,omitempty"`
 }
 
-// ChatRequest is the unified inbound request (OpenAI-compatible).
+// ChatRequest is the unified inbound request (OpenAI-compatible). Tools and
+// ToolChoice are opaque OpenAI-shaped JSON, forwarded to providers that support
+// them (currently OpenAI, non-streaming path).
 type ChatRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Temperature *float64  `json:"temperature,omitempty"`
-	MaxTokens   *int      `json:"max_tokens,omitempty"`
-	Stream      bool      `json:"stream,omitempty"`
+	Model       string          `json:"model"`
+	Messages    []Message       `json:"messages"`
+	Temperature *float64        `json:"temperature,omitempty"`
+	MaxTokens   *int            `json:"max_tokens,omitempty"`
+	Stream      bool            `json:"stream,omitempty"`
+	Tools       json.RawMessage `json:"tools,omitempty"`
+	ToolChoice  json.RawMessage `json:"tool_choice,omitempty"`
 }
 
-// ChatResponse is the unified parsed response.
+// ChatResponse is the unified parsed response. ToolCalls/FinishReason are set
+// when the model requested tool calls instead of (or alongside) text.
 type ChatResponse struct {
 	Content          string
+	ToolCalls        json.RawMessage
+	FinishReason     string
 	PromptTokens     int
 	CompletionTokens int
 }

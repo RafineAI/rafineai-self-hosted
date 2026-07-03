@@ -30,6 +30,17 @@ func (a openAIAdapter) buildBody(req ChatRequest, p state.Provider, stream bool)
 	if req.MaxTokens != nil {
 		body["max_tokens"] = *req.MaxTokens
 	}
+	// Tool calling is forwarded on the non-streaming path only. Streaming
+	// tool_call deltas would need dedicated handling in DecodeStream/the proxy
+	// re-emitter; until that exists we don't advertise tools upstream while
+	// streaming (avoids producing an empty text stream). Clients that need
+	// tools should call with stream:false.
+	if !stream && len(req.Tools) > 0 {
+		body["tools"] = req.Tools
+		if len(req.ToolChoice) > 0 {
+			body["tool_choice"] = req.ToolChoice
+		}
+	}
 	return body
 }
 
@@ -92,8 +103,10 @@ func (openAIAdapter) ParseResponse(body []byte) (ChatResponse, error) {
 	var r struct {
 		Choices []struct {
 			Message struct {
-				Content string `json:"content"`
+				Content   string          `json:"content"`
+				ToolCalls json.RawMessage `json:"tool_calls"`
 			} `json:"message"`
+			FinishReason string `json:"finish_reason"`
 		} `json:"choices"`
 		Usage struct {
 			PromptTokens     int `json:"prompt_tokens"`
@@ -108,6 +121,8 @@ func (openAIAdapter) ParseResponse(body []byte) (ChatResponse, error) {
 	}
 	return ChatResponse{
 		Content:          r.Choices[0].Message.Content,
+		ToolCalls:        r.Choices[0].Message.ToolCalls,
+		FinishReason:     r.Choices[0].FinishReason,
 		PromptTokens:     r.Usage.PromptTokens,
 		CompletionTokens: r.Usage.CompletionTokens,
 	}, nil

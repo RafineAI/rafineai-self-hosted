@@ -7,10 +7,7 @@ rejected so the tool can't be used to reach internal infrastructure.
 """
 from __future__ import annotations
 
-import ipaddress
-import socket
 import time
-from urllib.parse import urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -18,31 +15,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from .. import db, llm
 from ..config import Settings, get_settings
 from ..deps import CurrentUser, get_current_user
+from ..netguard import guard_url
 
 router = APIRouter(prefix="/api/tools/api-client", tags=["api-client"])
 
 _ALLOWED_METHODS = {"GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"}
 _MAX_RESPONSE_BYTES = 1024 * 1024
-
-
-def _guard_url(url: str) -> None:
-    parsed = urlparse(url)
-    if parsed.scheme not in ("http", "https"):
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "yalnızca http/https desteklenir")
-    host = parsed.hostname
-    if not host:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "geçersiz URL")
-    try:
-        infos = socket.getaddrinfo(host, None)
-    except socket.gaierror:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, "host çözümlenemedi")
-    for info in infos:
-        ip = ipaddress.ip_address(info[4][0])
-        if ip.is_loopback or ip.is_private or ip.is_link_local or ip.is_reserved:
-            raise HTTPException(
-                status.HTTP_403_FORBIDDEN,
-                "iç ağ / özel IP adreslerine istek engellendi (SSRF koruması)",
-            )
 
 
 @router.post("/send")
@@ -55,7 +33,7 @@ async def send_request(body: dict, _: CurrentUser = Depends(get_current_user)):
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "geçersiz HTTP metodu")
     if not url:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "URL gerekli")
-    _guard_url(url)
+    guard_url(url)
 
     start = time.monotonic()
     try:

@@ -207,6 +207,14 @@ func (h *Handler) ChatCompletions(c echo.Context) error {
 			"request blocked by content policy")
 	}
 
+	// Tool calling passthrough is currently implemented for OpenAI-type
+	// providers only. Reject (rather than silently drop) tools for others so
+	// clients get a clear signal instead of a confusingly tool-less answer.
+	if len(req.Tools) > 0 && p.Type != "openai" {
+		return jsonError(c, http.StatusBadRequest, "tools_unsupported",
+			"tool calling is currently supported only for OpenAI-type providers")
+	}
+
 	adapter := provider.For(p.Type)
 	if adapter == nil {
 		return jsonError(c, http.StatusInternalServerError, "unsupported_provider", "no adapter for provider type")
@@ -423,14 +431,22 @@ func (h *Handler) audit(claims signing.Claims, p state.Provider, model string,
 
 // openAIResponse renders the unified response in OpenAI Chat Completions shape.
 func openAIResponse(model string, r provider.ChatResponse) map[string]any {
+	msg := map[string]any{"role": "assistant", "content": r.Content}
+	if len(r.ToolCalls) > 0 {
+		msg["tool_calls"] = r.ToolCalls
+	}
+	finish := r.FinishReason
+	if finish == "" {
+		finish = "stop"
+	}
 	return map[string]any{
 		"id":      "chatcmpl-rafine",
 		"object":  "chat.completion",
 		"model":   model,
 		"choices": []map[string]any{{
 			"index":         0,
-			"message":       map[string]string{"role": "assistant", "content": r.Content},
-			"finish_reason": "stop",
+			"message":       msg,
+			"finish_reason": finish,
 		}},
 		"usage": map[string]int{
 			"prompt_tokens":     r.PromptTokens,

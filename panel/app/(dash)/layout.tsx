@@ -6,21 +6,22 @@ import Link from "next/link";
 import { api, clearSession, getRole, getToken } from "@/lib/api";
 import { toggleDark, getDark } from "@/lib/theme-bootstrap";
 import { useSettings } from "@/lib/settings-context";
+import { Icon } from "@/components/icons";
 import type { User } from "@/lib/types";
 
 const ADMIN_NAV = [
-  { href: "/dashboard",     label: "Dashboard",      icon: "📊" },
-  { href: "/providers",     label: "LLM Providers",  icon: "🔌" },
-  { href: "/teams",         label: "Teams",          icon: "🧑‍🤝‍🧑" },
-  { href: "/users",         label: "Users",           icon: "👥" },
-  { href: "/policy",        label: "Policy Rules",    icon: "🛡️" },
-  { href: "/alerts",        label: "Alerts",          icon: "🔔" },
-  { href: "/documents",     label: "Belgelerim",      icon: "📁" },
-  { href: "/knowledge",     label: "Bilgi Tabanı",    icon: "📚" },
-  { href: "/marketplace",   label: "Marketplace",     icon: "🧩" },
-  { href: "/conversations", label: "Chat Geçmişi",    icon: "📜" },
-  { href: "/audit",         label: "Audit Logs",      icon: "📋" },
-  { href: "/settings",      label: "Ayarlar",         icon: "⚙️" },
+  { href: "/dashboard",     label: "Kontrol Merkezi", icon: "dashboard" },
+  { href: "/providers",     label: "LLM Providers",   icon: "providers" },
+  { href: "/teams",         label: "Teams",           icon: "teams" },
+  { href: "/users",         label: "Users",           icon: "users" },
+  { href: "/policy",        label: "Policy Rules",    icon: "policy" },
+  { href: "/alerts",        label: "Alerts",          icon: "alerts" },
+  { href: "/documents",     label: "Belgelerim",      icon: "documents" },
+  { href: "/knowledge",     label: "Bilgi Tabanı",    icon: "knowledge" },
+  { href: "/marketplace",   label: "Marketplace",     icon: "marketplace" },
+  { href: "/conversations", label: "Chat Geçmişi",    icon: "conversations" },
+  { href: "/audit",         label: "Audit Logs",      icon: "audit" },
+  { href: "/settings",      label: "Ayarlar",         icon: "settings" },
 ];
 
 function DarkToggle() {
@@ -30,9 +31,9 @@ function DarkToggle() {
     <button
       onClick={() => setDark(toggleDark())}
       title={dark ? "Açık tema" : "Koyu tema"}
-      className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-slate-400 transition text-base"
+      className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 dark:text-slate-400 transition"
     >
-      {dark ? "☀️" : "🌙"}
+      <Icon name={dark ? "sun" : "moon"} className="h-[18px] w-[18px]" />
     </button>
   );
 }
@@ -68,8 +69,10 @@ export default function DashLayout({ children }: { children: React.ReactNode }) 
     router.replace("/login");
   }
 
-  // Non-admin: no sidebar — chat page manages its own full-screen layout
-  if (!isAdmin) {
+  // The chat route owns its full screen (single sidebar) for everyone, and
+  // non-admins never get the app nav rail. In both cases skip the dash shell.
+  const onChat = pathname.startsWith("/chat");
+  if (!isAdmin || onChat) {
     return (
       <div className="min-h-screen bg-slate-100 dark:bg-slate-950">
         {children}
@@ -124,7 +127,7 @@ export default function DashLayout({ children }: { children: React.ReactNode }) 
                 : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
             } ${!open ? "justify-center" : ""}`}
           >
-            <span className="shrink-0 text-base">💬</span>
+            <Icon name="chat" className="h-[18px] w-[18px] shrink-0" />
             {open && "Chat"}
           </Link>
         </div>
@@ -144,7 +147,7 @@ export default function DashLayout({ children }: { children: React.ReactNode }) 
                     : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
                 } ${!open ? "justify-center" : ""}`}
               >
-                <span className="shrink-0 text-base" aria-hidden>{n.icon}</span>
+                <Icon name={n.icon} className="h-[18px] w-[18px] shrink-0" />
                 {open && n.label}
               </Link>
             );
