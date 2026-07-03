@@ -456,7 +456,8 @@ export default function ChatPage() {
             <p className="mt-1 text-sm">{s.chat_welcome_subtitle}</p>
           </div>
         ) : (
-          <div className="flex-1 space-y-4 overflow-y-auto p-6">
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="mx-auto max-w-3xl space-y-4">
             {messages.map((m, i) => {
               const isLast = i === messages.length - 1;
               const streaming = sending && isLast && m.role === "assistant";
@@ -503,6 +504,7 @@ export default function ChatPage() {
               );
             })}
             <div ref={bottomRef} />
+            </div>
           </div>
         )}
 
@@ -582,7 +584,7 @@ export default function ChatPage() {
               <button className="btn-ghost text-sm" onClick={() => { setCtxSource(""); setCtxRef(""); }}>İptal</button>
             </div>
           )}
-          <div className="flex items-end gap-2 p-4">
+          <div className="mx-auto my-3 flex w-full max-w-3xl items-end gap-2 rounded-2xl border border-slate-300 bg-white px-2 py-1.5 shadow-sm transition focus-within:border-brand/60 focus-within:shadow-md dark:border-slate-600 dark:bg-slate-800">
             <input
               ref={fileInputRef}
               type="file"
@@ -642,7 +644,7 @@ export default function ChatPage() {
               )}
             </button>
             <textarea
-              className="input max-h-40 resize-none dark:bg-slate-800 dark:border-slate-600 dark:text-slate-100"
+              className="max-h-40 flex-1 resize-none bg-transparent px-2 py-2 text-sm outline-none placeholder:text-slate-400 dark:text-slate-100"
               rows={1}
               placeholder={s.chat_placeholder}
               value={input}

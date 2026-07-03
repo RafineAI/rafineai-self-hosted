@@ -7,7 +7,7 @@ const PALETTE = ["#4f46e5", "#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6
 export function LineChart({
   data,
   height = 200,
-  color = "#4f46e5",
+  color = "#7c5cfc",
   label,
 }: {
   data: { x: string; y: number }[];
@@ -16,7 +16,7 @@ export function LineChart({
   label?: string;
 }) {
   const w = 600;
-  const pad = 32;
+  const pad = 24;
   const max = Math.max(1, ...data.map((d) => d.y));
   const stepX = data.length > 1 ? (w - pad * 2) / (data.length - 1) : 0;
   const pts = data.map((d, i) => {
@@ -24,24 +24,34 @@ export function LineChart({
     const y = height - pad - (d.y / max) * (height - pad * 2);
     return [x, y] as const;
   });
-  const path = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
-  const area = `${path} L${pad + (data.length - 1) * stepX},${height - pad} L${pad},${height - pad} Z`;
+  const line = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+  const last = pts[pts.length - 1];
+  const area = pts.length ? `${line} L${last[0].toFixed(1)},${height - pad} L${pad},${height - pad} Z` : "";
+  // Unique gradient id per color so multiple charts on a page don't collide.
+  const gid = `grad-${color.replace(/[^a-z0-9]/gi, "")}`;
 
   return (
     <div className="w-full overflow-x-auto">
-      {label && <p className="mb-1 text-sm font-medium text-slate-600 dark:text-slate-300">{label}</p>}
+      {label && <p className="mb-2 text-sm font-medium text-slate-600 dark:text-slate-300">{label}</p>}
       <svg viewBox={`0 0 ${w} ${height}`} className="w-full" style={{ minWidth: 320 }}>
+        <defs>
+          <linearGradient id={gid} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor={color} stopOpacity={0.35} />
+            <stop offset="1" stopColor={color} stopOpacity={0} />
+          </linearGradient>
+        </defs>
+        {[0.25, 0.5, 0.75].map((f) => (
+          <line key={f} x1={pad} y1={pad + f * (height - pad * 2)} x2={w - pad} y2={pad + f * (height - pad * 2)} className="stroke-slate-200/70 dark:stroke-white/[0.06]" />
+        ))}
         <line x1={pad} y1={height - pad} x2={w - pad} y2={height - pad} className="stroke-slate-200 dark:stroke-slate-700" />
-        {data.length > 0 && (
+        {data.length > 0 ? (
           <>
-            <path d={area} fill={color} opacity={0.08} />
-            <path d={path} fill="none" stroke={color} strokeWidth={2} />
-            {pts.map((p, i) => (
-              <circle key={i} cx={p[0]} cy={p[1]} r={2.5} fill={color} />
-            ))}
+            <path d={area} fill={`url(#${gid})`} />
+            <path d={line} fill="none" stroke={color} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+            <circle cx={last[0]} cy={last[1]} r={8} fill={color} opacity={0.22} />
+            <circle cx={last[0]} cy={last[1]} r={4} fill={color} />
           </>
-        )}
-        {data.length === 0 && (
+        ) : (
           <text x={w / 2} y={height / 2} textAnchor="middle" className="fill-slate-400 text-sm">
             veri yok
           </text>
