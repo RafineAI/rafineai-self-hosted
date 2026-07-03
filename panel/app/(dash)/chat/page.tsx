@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { api, uploadFile, streamChat, clearSession, getRole } from "@/lib/api";
 import { MessageContent } from "@/components/message-content";
+import { Icon } from "@/components/icons";
 import { toggleDark, getDark } from "@/lib/theme-bootstrap";
 import { useSettings } from "@/lib/settings-context";
 import type { Attachment, Conversation, Message, Provider } from "@/lib/types";
@@ -322,7 +323,10 @@ export default function ChatPage() {
       <div className="flex w-72 shrink-0 flex-col border-r border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 px-4 py-3">
-          <span className="font-semibold text-slate-800 dark:text-slate-100">Sohbetler</span>
+          <Link href={isAdmin ? "/dashboard" : "/chat"} title={isAdmin ? "Panele dön" : "RafineAI"} className="flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-brand to-cyan-accent text-xs font-bold text-white dark:shadow-glow">R</span>
+            <span className="font-semibold text-slate-800 dark:text-slate-100">RafineAI</span>
+          </Link>
           <button
             onClick={newChat}
             className="flex h-7 w-7 items-center justify-center rounded-md bg-brand text-white text-lg font-bold hover:bg-brand-dark transition"
@@ -373,7 +377,7 @@ export default function ChatPage() {
               className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition text-base"
               title="Bağlantılarım"
             >
-              🔗
+              <Icon name="link" className="h-[18px] w-[18px]" />
             </Link>
           )}
           <button
@@ -381,7 +385,7 @@ export default function ChatPage() {
             className="flex h-8 w-8 items-center justify-center rounded-md text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition text-base"
             title={dark ? "Açık tema" : "Koyu tema"}
           >
-            {dark ? "☀️" : "🌙"}
+            <Icon name={dark ? "sun" : "moon"} className="h-[18px] w-[18px]" />
           </button>
           <div className="flex-1" />
           <button
@@ -413,7 +417,7 @@ export default function ChatPage() {
                 onClick={() => setModelOpen((v) => !v)}
                 className="flex items-center gap-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 px-4 py-1.5 text-sm font-medium text-slate-700 dark:text-slate-200 shadow-sm hover:border-brand/60 hover:shadow-md transition"
               >
-                <span className="text-base">🤖</span>
+                <Icon name="model" className="h-[18px] w-[18px] text-slate-500 dark:text-slate-400" />
                 <span>{currentProvider?.name ?? "Model seç"}</span>
                 {currentProvider && (
                   <span className="text-xs text-slate-400 dark:text-slate-500">— {currentProvider.default_model}</span>
@@ -451,7 +455,7 @@ export default function ChatPage() {
         {/* Messages */}
         {messages.length === 0 && !activeId ? (
           <div className="flex flex-1 flex-col items-center justify-center text-center text-slate-400 dark:text-slate-500">
-            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand/10 dark:bg-brand/20 text-3xl">💬</div>
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-brand/10 text-brand dark:bg-brand/20"><Icon name="chat" className="h-8 w-8" /></div>
             <p className="font-medium text-slate-600 dark:text-slate-300">{s.chat_welcome_title}</p>
             <p className="mt-1 text-sm">{s.chat_welcome_subtitle}</p>
           </div>
@@ -554,7 +558,7 @@ export default function ChatPage() {
             <div className="flex flex-wrap gap-2 px-4 pt-3">
               {pendingContexts.map((c, i) => (
                 <div key={i} className="flex items-center gap-1.5 rounded-lg bg-sky-100 dark:bg-sky-900/30 px-2.5 py-1 text-xs text-sky-700 dark:text-sky-300">
-                  🧩 <span className="max-w-[200px] truncate" title={c.label}>{c.label}</span>
+                  <Icon name="context" className="h-3.5 w-3.5 shrink-0" /> <span className="max-w-[200px] truncate" title={c.label}>{c.label}</span>
                   <button
                     type="button"
                     className="ml-0.5 text-sky-500 hover:text-sky-700"
@@ -603,9 +607,9 @@ export default function ChatPage() {
                   onClick={() => setCtxMenuOpen((v) => !v)}
                   disabled={sending}
                   title="Bağlam ekle (Web / Sentry / GitHub / Slack)"
-                  className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-300 transition disabled:opacity-40 text-base"
+                  className="flex h-9 w-9 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-300 transition disabled:opacity-40"
                 >
-                  🧩
+                  <Icon name="context" className="h-[18px] w-[18px]" />
                 </button>
                 {ctxMenuOpen && (
                   <div className="absolute bottom-full left-0 z-50 mb-1.5 w-52 overflow-hidden rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 shadow-xl">
