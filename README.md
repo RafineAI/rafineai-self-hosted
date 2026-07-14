@@ -122,7 +122,71 @@ docker compose -f docker-compose.dev.yml up --build
 
 > **Distributing to customers?** See [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md)
 > for the build → registry → one-command-install model (GHCR / GCP Artifact
-> Registry), upgrades, and backups.
+> Registry / Docker Hub), upgrades, and backups.
+
+---
+
+## Docker Hub Deployment
+
+RafineAI's three images (`gateway`, `api`, `panel`) can be built and pushed to a
+**private** Docker Hub repository instead of (or alongside) GHCR. This is useful
+when customers already `docker login` against Docker Hub, or your org standardizes
+on it.
+
+### 1. One-time setup
+
+1. Create three **private** repositories under your Docker Hub namespace before
+   the first push: `gateway`, `api`, `panel` (Docker Hub → *Create Repository* →
+   Visibility: **Private**). Docker Hub does not retroactively make an existing
+   public repo private on the free tier, so create them private up front.
+2. Create an [access token](https://hub.docker.com/settings/security) scoped to
+   **Read & Write** (avoid using your account password).
+3. Add two repository secrets in **GitHub → Settings → Secrets and variables →
+   Actions**:
+   - `DOCKERHUB_USERNAME` — your Docker Hub username or org name
+   - `DOCKERHUB_TOKEN` — the access token from step 2
+
+### 2. Push via CI/CD
+
+Pushing a version tag (`git tag v0.1.0 && git push origin v0.1.0`) triggers
+[`.github/workflows/dockerhub-release.yml`](./.github/workflows/dockerhub-release.yml),
+which builds all three images and pushes them to
+`docker.io/<DOCKERHUB_USERNAME>/<service>:<tag>` (and `:latest`). The job
+is a no-op if the two secrets above aren't set, so it's safe to leave in place even
+if you only use GHCR. You can also trigger it manually from the **Actions** tab
+(`workflow_dispatch`) with a custom tag.
+
+### 3. Push manually
+
+```bash
+export DOCKERHUB_NAMESPACE=your-dockerhub-username   # or org name
+export VERSION=v0.1.0
+
+docker login                                          # prompts for username/token
+
+docker build -t docker.io/$DOCKERHUB_NAMESPACE/gateway:$VERSION ./gateway
+docker build -t docker.io/$DOCKERHUB_NAMESPACE/api:$VERSION -f api/Dockerfile .
+docker build -t docker.io/$DOCKERHUB_NAMESPACE/panel:$VERSION -f panel/Dockerfile .
+
+docker push docker.io/$DOCKERHUB_NAMESPACE/gateway:$VERSION
+docker push docker.io/$DOCKERHUB_NAMESPACE/api:$VERSION
+docker push docker.io/$DOCKERHUB_NAMESPACE/panel:$VERSION
+```
+
+### 4. Point the stack at Docker Hub
+
+Set these in the deployment's `.env` (see [`.env.example`](./.env.example)):
+
+```bash
+REGISTRY=docker.io/your-dockerhub-username
+RAFINE_VERSION=v0.1.0
+```
+
+`docker-compose.yml` already reads image names from `${REGISTRY}` and
+`${RAFINE_VERSION}`, so no compose changes are needed — just re-run
+`docker compose pull && docker compose up -d`. Because the repos are private, the
+target machine must `docker login` with an account that has pull access before
+`docker compose pull` will succeed.
 
 ---
 
