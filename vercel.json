@@ -1,0 +1,12 @@
+{
+  "version": 2,
+  "builds": [
+    { "src": "docs/landing-page/**", "use": "@vercel/static" },
+    { "src": "docs/screenshots/**", "use": "@vercel/static" }
+  ],
+  "routes": [
+    { "src": "^/$", "dest": "/docs/landing-page/index.html" },
+    { "src": "^/screenshots/(.*)$", "dest": "/docs/screenshots/$1" },
+    { "src": "^/(.*)$", "dest": "/docs/landing-page/$1" }
+  ]
+}
