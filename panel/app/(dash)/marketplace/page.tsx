@@ -19,6 +19,7 @@ export default function MarketplacePage() {
   const [apps, setApps] = useState<MarketplaceApp[]>([]);
   const [error, setError] = useState("");
   const [configuring, setConfiguring] = useState<MarketplaceApp | null>(null);
+  const [step, setStep] = useState<"guide" | "form">("form");
   const [form, setForm] = useState<Record<string, string>>({});
   const isAdmin = getRole() === "owner" || getRole() === "admin";
 
@@ -37,7 +38,14 @@ export default function MarketplacePage() {
         setForm(cfg);
       } catch { /* ignore */ }
     }
+    // Start on guide step if available (mirrors BYOK connection flow), otherwise go straight to form.
+    setStep(app.guide ? "guide" : "form");
     setConfiguring(app);
+  }
+
+  function closeConfig() {
+    setConfiguring(null);
+    setForm({});
   }
 
   async function install(app: MarketplaceApp) {
@@ -46,7 +54,7 @@ export default function MarketplacePage() {
         method: "POST",
         body: JSON.stringify({ config: form }),
       });
-      setConfiguring(null);
+      closeConfig();
       await refresh();
     } catch (e: any) {
       setError(e.message);
@@ -54,7 +62,6 @@ export default function MarketplacePage() {
   }
 
   async function quickInstall(app: MarketplaceApp) {
-    // No-config tools install in one click.
     try {
       await api(`/api/marketplace/${app.slug}/install`, {
         method: "POST",
@@ -140,30 +147,102 @@ export default function MarketplacePage() {
         </div>
       ))}
 
-      {/* Config modal */}
+      {/* Config modal — two-phase guided setup mirrors the BYOK "Bağlantılarım" flow. */}
       {configuring && (
-        <div className="fixed inset-0 z-10 flex items-center justify-center bg-black/30 p-4" onClick={() => setConfiguring(null)}>
-          <div className="card w-full max-w-lg p-6" onClick={(e) => e.stopPropagation()}>
-            <h3 className="mb-4 text-lg font-semibold">{configuring.icon} {configuring.name} — Yapılandırma</h3>
-            <div className="space-y-3">
-              {configuring.config_fields.map((f) => (
-                <div key={f.key}>
-                  <label className="mb-1 block text-sm font-medium">
-                    {f.label}{f.optional && <span className="text-slate-400"> (opsiyonel)</span>}
-                  </label>
-                  <input
-                    type={f.secret ? "password" : "text"}
-                    className="input"
-                    placeholder={f.placeholder}
-                    value={form[f.key] ?? ""}
-                    onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))}
-                  />
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          onClick={closeConfig}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 px-5 py-4">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">{configuring.icon}</span>
+                <div>
+                  <p className="font-semibold text-slate-800 dark:text-slate-100">{configuring.name}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {configuring.guide?.subtitle ?? "Yapılandırma"}
+                  </p>
                 </div>
-              ))}
+              </div>
+              <button
+                onClick={closeConfig}
+                className="text-xl leading-none text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+              >
+                ×
+              </button>
             </div>
-            <div className="mt-5 flex justify-end gap-2">
-              <button className="btn-ghost" onClick={() => setConfiguring(null)}>İptal</button>
-              <button className="btn" onClick={() => install(configuring)}>Kaydet</button>
+
+            <div className="p-5">
+              {step === "guide" && configuring.guide ? (
+                <>
+                  {/* Step-by-step guide phase */}
+                  <p className="mb-4 text-sm text-slate-600 dark:text-slate-400">
+                    Bağlantı bilgilerini almak için şu adımları izle:
+                  </p>
+                  <ol className="mb-5 space-y-3">
+                    {configuring.guide.steps.map((s, i) => (
+                      <li key={i} className="flex gap-3">
+                        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand/10 dark:bg-brand/20 text-xs font-bold text-brand">
+                          {i + 1}
+                        </span>
+                        <span className="text-sm text-slate-700 dark:text-slate-300">{s}</span>
+                      </li>
+                    ))}
+                  </ol>
+                  <a
+                    href={configuring.guide.console_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mb-4 flex items-center gap-2 rounded-xl border border-brand/30 dark:border-brand/40 bg-brand/5 dark:bg-brand/10 px-4 py-3 text-sm font-medium text-brand transition hover:bg-brand/10 dark:hover:bg-brand/20"
+                  >
+                    <span className="text-base">🔗</span>
+                    <span>{configuring.guide.console_label}</span>
+                    <span className="ml-auto text-xs text-brand/60">↗</span>
+                  </a>
+                  <button className="btn w-full" onClick={() => setStep("form")}>
+                    Bilgileri aldım, devam et →
+                  </button>
+                </>
+              ) : (
+                <>
+                  {/* Config fields phase */}
+                  <div className="space-y-3">
+                    {configuring.config_fields.map((f) => (
+                      <div key={f.key}>
+                        <label className="mb-1 block text-sm font-medium text-slate-700 dark:text-slate-300">
+                          {f.label}
+                          {f.optional && <span className="text-slate-400"> (opsiyonel)</span>}
+                        </label>
+                        <input
+                          type={f.secret ? "password" : "text"}
+                          className="input"
+                          placeholder={f.placeholder}
+                          value={form[f.key] ?? ""}
+                          onChange={(e) => setForm((s) => ({ ...s, [f.key]: e.target.value }))}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-5 flex gap-2">
+                    {configuring.guide ? (
+                      <button className="btn-ghost flex-1 text-sm" onClick={() => setStep("guide")}>
+                        ← Geri
+                      </button>
+                    ) : (
+                      <button className="btn-ghost flex-1 text-sm" onClick={closeConfig}>
+                        İptal
+                      </button>
+                    )}
+                    <button className="btn flex-1" onClick={() => install(configuring)}>
+                      Kaydet
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
